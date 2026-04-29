@@ -63,12 +63,8 @@ WS_PORT=3005
 # Auth
 JWT_SECRET=your_jwt_secret_key_here
 
-# Modbus (sesuaikan dengan port COM converter RS485-USB lo)
-MODBUS_PORT=COM2
-MODBUS_BAUDRATE=9600
-MODBUS_PARITY=none
-
-# Polling interval real-time (ms), default 3000
+# Polling interval real-time (ms)
+LOG_INTERVAL_MINUTES=15
 POLL_INTERVAL_MS=3000
 ```
 
