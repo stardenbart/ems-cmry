@@ -159,11 +159,10 @@ Akses website di browser: **http://localhost:3000**
 
 Untuk menghubungkan power meter fisik via RS485:
 
-1. Install driver USB converter (CH340 atau CP2102) sesuai chip converter lo
+1. Install driver USB converter (CH340 atau CP2102) sesuai chip converter
 2. Cek nomor COM port di **Device Manager → Ports (COM & LPT)**
-3. Update `MODBUS_PORT` di `backend/.env` sesuai nomor COM tersebut
-4. Pastikan setting Modbus di meter: **Slave ID 1, Baud 9600, Parity None, Stop Bits 1**
-5. Restart backend
+3. Pastikan setting Modbus di meter: **Slave ID 1, Baud 9600, Parity None, Stop Bits 1**
+4. Restart backend
 
 Jika hardware tidak terdeteksi atau tidak konek, sistem otomatis berjalan dalam **Demo Mode** menggunakan data simulasi.
 
