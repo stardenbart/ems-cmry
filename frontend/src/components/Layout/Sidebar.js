@@ -3,6 +3,17 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import './Sidebar.css';
 
+// Jendela aplikasi desktop dibuka peluncur dengan ?desktop=1 di profil browser
+// tersendiri; penandanya disimpan supaya tetap terbaca setelah navigasi.
+export function isDesktopApp() {
+  try {
+    if (new URLSearchParams(window.location.search).get('desktop') === '1') {
+      localStorage.setItem('ems_desktop', '1');
+    }
+    return localStorage.getItem('ems_desktop') === '1';
+  } catch (e) { return false; }
+}
+
 function Sidebar({ isOpen, onClose }) {
   const { user, logout } = useAuth();
   const location = useLocation();
@@ -35,7 +46,7 @@ function Sidebar({ isOpen, onClose }) {
       levels: ['admin','maintenance','operator','viewer'],
     },
     {
-      label: 'Quantity Dashboard', key: 'kind-dash', path: '/dashboard/besaran',
+      label: 'Measurement Trends', key: 'kind-dash', path: '/dashboard/trends',
       levels: ['admin','maintenance','operator','viewer'],
     },
     {
@@ -74,27 +85,55 @@ function Sidebar({ isOpen, onClose }) {
     },
     { label: 'Alarm', key: 'alarm', path: '/alarm', levels: ['admin','maintenance','operator'] },
     {
+      // Dikelompokkan per tujuan, dan kelompok pertama diurutkan sesuai urutan
+      // setup device baru: jalur dulu, lalu peta register, baru device-nya,
+      // terakhir letaknya di pohon aset. Device tidak bisa dibuat sebelum
+      // gateway dan tipe device-nya ada.
       label: 'Settings', key: 'settings',
       levels: ['admin','maintenance'],
       children: [
+        { label: 'Devices & Connection', subKey: 'set-devices',
+          children: [
+            ...(level === 'admin' ? [
+              { label: '1. Data Gateway', path: '/settings/gateway' },
+              { label: '2. Data Mapping', path: '/settings/data-mapping' },
+              { label: '3. Device', path: '/settings/device' },
+            ] : []),
+            { label: '4. Asset Hierarchy', path: '/settings/assets' },
+            { label: 'Grouping (legacy)', path: '/settings/grouping' },
+          ],
+        },
+        { label: 'Units & Conversion', subKey: 'set-units',
+          children: [
+            { label: 'Units', path: '/settings/units' },
+            { label: 'Energy Conversion', path: '/settings/energy-conversion' },
+          ],
+        },
+        { label: 'Alarms & Email', subKey: 'set-alarms',
+          children: [
+            { label: 'Alarm Rules', path: '/settings/alarm-rules' },
+            { label: 'Alarm (legacy)', path: '/settings/alarm' },
+            ...(level === 'admin' ? [{ label: 'SMTP (email server)', path: '/settings/smtp' }] : []),
+          ],
+        },
+        { label: 'Production Calendar', subKey: 'set-calendar',
+          children: [
+            { label: 'Shifts & Calendar', path: '/settings/shift' },
+          ],
+        },
         ...(level === 'admin' ? [
-          { label: 'Device', path: '/settings/device' },
-          { label: 'Data Gateway', path: '/settings/gateway' },
-          { label: 'Data Mapping', path: '/settings/data-mapping' },
-        ] : []),
-        { label: 'Asset Hierarchy', path: '/settings/assets' },
-        { label: 'Units', path: '/settings/units' },
-        { label: 'Grouping (legacy)', path: '/settings/grouping' },
-        { label: 'Energy Conversion', path: '/settings/energy-conversion' },
-        { label: 'Alarm', path: '/settings/alarm' },
-        { label: 'Alarm Rules', path: '/settings/alarm-rules' },
-        { label: 'Shifts & Calendar', path: '/settings/shift' },
-        ...(level === 'admin' ? [
-          { label: 'User Management', path: '/settings/users' },
-          { label: 'Roles & Permissions', path: '/settings/roles' },
-          { label: 'SMTP', path: '/settings/smtp' },
+          { label: 'Users & Access', subKey: 'set-users',
+            children: [
+              { label: 'User Management', path: '/settings/users' },
+              { label: 'Roles & Permissions', path: '/settings/roles' },
+            ],
+          },
         ] : []),
       ],
+    },
+    {
+      label: 'User Guide', key: 'guide', path: '/guide',
+      levels: ['admin','maintenance','operator','viewer'],
     },
   ];
 
@@ -134,6 +173,12 @@ function Sidebar({ isOpen, onClose }) {
 
         <div className="sidebar-bottom">
           <div className="sidebar-user-info">{user?.name}</div>
+          {!isDesktopApp() ? (
+            <a className="sidebar-bottom-btn" href="/download/EMS-Desktop.exe" download
+              title="Install EMS as a desktop app with its own icon">
+              Download Desktop App
+            </a>
+          ) : null}
           <button className="sidebar-bottom-btn" onClick={() => { navigate('/change-password'); if (window.innerWidth <= 768) onClose(); }}>
             Change Password
           </button>

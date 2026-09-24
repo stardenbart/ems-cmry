@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import './Login.css';
+import { isDesktopApp } from '../components/Layout/Sidebar';
 
 function Login() {
   const [username, setUsername] = useState('');
@@ -46,6 +47,15 @@ function Login() {
             {loading ? 'Signing in...' : 'Login'}
           </button>
         </form>
+
+        {!isDesktopApp() ? (
+          <div style={{ textAlign: 'center', marginTop: 14, fontSize: 12 }}>
+            <a href="/download/EMS-Desktop.exe" download style={{ color: '#1B4F72' }}>
+              Download the EMS desktop app
+            </a>
+            <span style={{ color: '#95a5a6' }}> — opens EMS from a desktop icon, no browser needed</span>
+          </div>
+        ) : null}
 
         <div className="login-footer">
           Powered by Digital Transformation Plant Sentul

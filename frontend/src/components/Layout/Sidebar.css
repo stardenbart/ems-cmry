@@ -92,6 +92,7 @@
 }
 
 .sidebar-bottom-btn:hover { background: rgba(255,255,255,0.2); }
+a.sidebar-bottom-btn { text-decoration: none; box-sizing: border-box; }
 
 .sidebar-logout-btn {
   background: rgba(230,57,70,0.3);

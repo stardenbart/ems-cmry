@@ -92,7 +92,7 @@ function DashboardByKind() {
 
   return (
     <div>
-      <h2 className="page-title">Quantity Dashboard</h2>
+      <h2 className="page-title">Measurement Trends</h2>
 
       {/* Tab jenis besaran, tumbuh sendiri dari data */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>

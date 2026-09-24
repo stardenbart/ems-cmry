@@ -51,7 +51,8 @@ function AppRoutes() {
       {/* Realtime */}
       <Route path="/overview" element={<ProtectedRoute><Overview /></ProtectedRoute>} />
       <Route path="/device" element={<ProtectedRoute><DeviceDetail /></ProtectedRoute>} />
-      <Route path="/dashboard/besaran" element={<ProtectedRoute><DashboardByKind /></ProtectedRoute>} />
+      <Route path="/dashboard/trends" element={<ProtectedRoute><DashboardByKind /></ProtectedRoute>} />
+      <Route path="/dashboard/besaran" element={<Navigate to="/dashboard/trends" replace />} />
       <Route path="/settings/alarm-rules" element={<ProtectedRoute><SettingsAlarmRules /></ProtectedRoute>} />
       <Route path="/settings/roles" element={<ProtectedRoute><SettingsRoles /></ProtectedRoute>} />
       <Route path="/settings/assets" element={<ProtectedRoute><SettingsAssets /></ProtectedRoute>} />
