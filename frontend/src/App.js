@@ -19,6 +19,7 @@ import SettingsDataMapping from './pages/SettingsDataMapping';
 import SettingsGrouping from './pages/SettingsGrouping';
 import SettingsEnergyConversion from './pages/SettingsEnergyConversion';
 import SettingsAlarm from './pages/SettingsAlarm';
+import SettingsAlarmRules from './pages/SettingsAlarmRules';
 import SettingsUsers from './pages/SettingsUsers';
 import SettingsSMTP from './pages/SettingsSMTP';
 import ChangePassword from './pages/ChangePassword';
@@ -45,6 +46,7 @@ function AppRoutes() {
       {/* Realtime */}
       <Route path="/overview" element={<ProtectedRoute><Overview /></ProtectedRoute>} />
       <Route path="/device" element={<ProtectedRoute><DeviceDetail /></ProtectedRoute>} />
+      <Route path="/settings/alarm-rules" element={<ProtectedRoute><SettingsAlarmRules /></ProtectedRoute>} />
       <Route path="/realtime/device" element={<ProtectedRoute><RealtimeDevice /></ProtectedRoute>} />
       <Route path="/realtime/sld" element={<ProtectedRoute><RealtimeDevice /></ProtectedRoute>} />
 

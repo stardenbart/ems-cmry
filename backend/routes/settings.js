@@ -392,4 +392,108 @@ router.post('/device-types/import', authenticate, authorize('admin'), async (req
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+// ==================== SHIFT & KALENDER ====================
+// Prasyarat untuk laporan dan baseline yang jujur: membandingkan hari kerja
+// dengan hari libur tidak bermakna.
+
+router.get('/shifts', authenticate, async (req, res) => {
+  try {
+    const rows = await sequelize.query('SELECT * FROM shifts ORDER BY start_time', { type: QueryTypes.SELECT });
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/shifts', authenticate, authorize('admin', 'maintenance'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.name || !b.start_time || !b.end_time) {
+      return res.status(400).json({ error: 'name, start_time, dan end_time diperlukan' });
+    }
+    const [row] = await sequelize.query(`
+      INSERT INTO shifts (name, start_time, end_time, weekdays, enabled)
+      VALUES (:name, :start_time, :end_time, :weekdays, :enabled) RETURNING *`, {
+      replacements: {
+        name: b.name, start_time: b.start_time, end_time: b.end_time,
+        weekdays: Array.isArray(b.weekdays) && b.weekdays.length > 0 ? b.weekdays.map(Number) : null,
+        enabled: b.enabled === undefined ? true : !!b.enabled,
+      }, type: QueryTypes.SELECT,
+    });
+    await audit.record(req, { action: 'create', entity: 'shift', entityId: row.id, after: row });
+    res.status(201).json(row);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+router.put('/shifts/:id', authenticate, authorize('admin', 'maintenance'), async (req, res) => {
+  try {
+    const [before] = await sequelize.query('SELECT * FROM shifts WHERE id = :id',
+      { replacements: { id: req.params.id }, type: QueryTypes.SELECT });
+    if (!before) return res.status(404).json({ error: 'Shift tidak ditemukan' });
+    const [row] = await sequelize.query(`
+      UPDATE shifts SET name = COALESCE(:name, name),
+             start_time = COALESCE(:start_time, start_time),
+             end_time = COALESCE(:end_time, end_time),
+             weekdays = :weekdays,
+             enabled = COALESCE(:enabled, enabled), updated_at = now()
+       WHERE id = :id RETURNING *`, {
+      replacements: {
+        id: req.params.id,
+        name: req.body.name ?? null,
+        start_time: req.body.start_time ?? null,
+        end_time: req.body.end_time ?? null,
+        weekdays: Array.isArray(req.body.weekdays)
+          ? (req.body.weekdays.length > 0 ? req.body.weekdays.map(Number) : null)
+          : before.weekdays,
+        enabled: req.body.enabled === undefined ? null : !!req.body.enabled,
+      }, type: QueryTypes.SELECT,
+    });
+    await audit.record(req, { action: 'update', entity: 'shift', entityId: row.id, before, after: row });
+    res.json(row);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+router.delete('/shifts/:id', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    await sequelize.query('DELETE FROM shifts WHERE id = :id', { replacements: { id: req.params.id } });
+    await audit.record(req, { action: 'delete', entity: 'shift', entityId: req.params.id });
+    res.json({ message: 'Shift dihapus' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Penanda hari khusus: libur, shutdown, maintenance, atau hari kerja di tanggal
+// yang biasanya libur.
+router.get('/calendar', authenticate, async (req, res) => {
+  try {
+    const rows = await sequelize.query(`
+      SELECT * FROM calendar_days
+       WHERE (:dari::date IS NULL OR day >= :dari::date)
+         AND (:sampai::date IS NULL OR day <= :sampai::date)
+       ORDER BY day`, {
+      replacements: { dari: req.query.from || null, sampai: req.query.to || null },
+      type: QueryTypes.SELECT });
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/calendar', authenticate, authorize('admin', 'maintenance'), async (req, res) => {
+  try {
+    const { day, kind, note } = req.body || {};
+    if (!day || !kind) return res.status(400).json({ error: 'day dan kind diperlukan' });
+    const [row] = await sequelize.query(`
+      INSERT INTO calendar_days (day, kind, note) VALUES (:day, :kind, :note)
+      ON CONFLICT (day) DO UPDATE SET kind = EXCLUDED.kind, note = EXCLUDED.note
+      RETURNING *`, { replacements: { day, kind, note: note || null }, type: QueryTypes.SELECT });
+    await audit.record(req, { action: 'update', entity: 'calendar_day', entityId: row.id, after: row });
+    res.json(row);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+router.delete('/calendar/:day', authenticate, authorize('admin', 'maintenance'), async (req, res) => {
+  try {
+    await sequelize.query('DELETE FROM calendar_days WHERE day = :day',
+      { replacements: { day: req.params.day } });
+    await audit.record(req, { action: 'delete', entity: 'calendar_day', entityId: req.params.day });
+    res.json({ message: 'Penanda hari dihapus' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

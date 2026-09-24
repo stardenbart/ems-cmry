@@ -81,6 +81,7 @@ function Sidebar({ isOpen, onClose }) {
         { label: 'Grouping', path: '/settings/grouping' },
         { label: 'Energy Conversion', path: '/settings/energy-conversion' },
         { label: 'Alarm', path: '/settings/alarm' },
+        { label: 'Aturan Alarm', path: '/settings/alarm-rules' },
         ...(level === 'admin' ? [
           { label: 'User Management', path: '/settings/users' },
           { label: 'SMTP', path: '/settings/smtp' },
