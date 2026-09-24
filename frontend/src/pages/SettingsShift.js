@@ -7,10 +7,10 @@ import api from '../api/axios';
 
 const HARI = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 const JENIS_HARI = [
-  { key: 'holiday', label: 'Libur' },
+  { key: 'holiday', label: 'Holiday' },
   { key: 'shutdown', label: 'Shutdown' },
   { key: 'maintenance', label: 'Maintenance' },
-  { key: 'production', label: 'Hari kerja (padahal biasanya libur)' },
+  { key: 'production', label: 'Working day (normally a holiday)' },
 ];
 
 const SHIFT_KOSONG = { name: '', start_time: '', end_time: '', weekdays: [1, 2, 3, 4, 5, 6], enabled: true };
@@ -41,33 +41,33 @@ function SettingsShift() {
       if (editId) await api.put(`/settings/shifts/${editId}`, form);
       else await api.post('/settings/shifts', form);
       setForm(SHIFT_KOSONG); setEditId(null); muat();
-    } catch (e) { setPesan(e.response?.data?.error || 'gagal menyimpan shift'); }
+    } catch (e) { setPesan(e.response?.data?.error || 'Failed to save shift'); }
   };
 
   const hapusShift = async (id) => {
-    if (!window.confirm('Hapus shift ini?')) return;
+    if (!window.confirm('Delete this shift?')) return;
     try { await api.delete(`/settings/shifts/${id}`); muat(); }
-    catch (e) { setPesan(e.response?.data?.error || 'gagal menghapus'); }
+    catch (e) { setPesan(e.response?.data?.error || 'Failed to delete'); }
   };
 
   const simpanHari = async () => {
     setPesan('');
-    if (!hariBaru.day) { setPesan('tanggal diperlukan'); return; }
+    if (!hariBaru.day) { setPesan('date is required'); return; }
     try {
       await api.post('/settings/calendar', hariBaru);
       setHariBaru({ day: '', kind: 'holiday', note: '' });
       muat();
-    } catch (e) { setPesan(e.response?.data?.error || 'gagal menyimpan penanda hari'); }
+    } catch (e) { setPesan(e.response?.data?.error || 'Failed to save special day'); }
   };
 
   const hapusHari = async (d) => {
     try { await api.delete(`/settings/calendar/${String(d).slice(0, 10)}`); muat(); }
-    catch (e) { setPesan(e.response?.data?.error || 'gagal menghapus'); }
+    catch (e) { setPesan(e.response?.data?.error || 'Failed to delete'); }
   };
 
   return (
     <div>
-      <h2 className="page-title">Shift dan Kalender</h2>
+      <h2 className="page-title">Shifts and Calendar</h2>
 
       {pesan ? (
         <div className="card" style={{ padding: 12, marginBottom: 12, color: '#c0392b' }}>{pesan}</div>
@@ -75,7 +75,7 @@ function SettingsShift() {
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', marginBottom: 12 }}>
-          {editId ? `Ubah shift #${editId}` : 'Shift baru'}
+          {editId ? `Edit shift #${editId}` : 'New shift'}
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <label style={{ fontSize: 12 }}>Nama
@@ -110,13 +110,12 @@ function SettingsShift() {
               onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))} />
             Aktif
           </label>
-          <button onClick={simpanShift}
-            style={{ padding: '7px 16px', background: '#1B4F72', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
-            {editId ? 'Simpan' : 'Tambah'}
+          <button className="btn btn-primary" onClick={simpanShift}>
+            {editId ? 'Save' : 'Add'}
           </button>
           {editId ? (
             <button onClick={() => { setEditId(null); setForm(SHIFT_KOSONG); }}
-              style={{ padding: '7px 16px', cursor: 'pointer' }}>Batal</button>
+              className="btn btn-outline">Cancel</button>
           ) : null}
         </div>
 
@@ -127,7 +126,7 @@ function SettingsShift() {
 
         <div className="table-responsive" style={{ marginTop: 14 }}>
           <table className="data-table">
-            <thead><tr><th>Nama</th><th>Jam</th><th>Hari</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Jam</th><th>Hari</th><th>Status</th><th></th></tr></thead>
             <tbody>
               {shifts.map((s) => (
                 <tr key={s.id}>
@@ -137,17 +136,17 @@ function SettingsShift() {
                       <span style={{ color: '#e67e22', fontSize: 11 }}> (lewat tengah malam)</span>
                     ) : null}
                   </td>
-                  <td>{s.weekdays && s.weekdays.length ? s.weekdays.map((d) => HARI[d]).join(' ') : 'setiap hari'}</td>
-                  <td>{s.enabled ? 'aktif' : 'nonaktif'}</td>
+                  <td>{s.weekdays && s.weekdays.length ? s.weekdays.map((d) => HARI[d]).join(' ') : 'every day'}</td>
+                  <td>{s.enabled ? 'aktif' : 'disabled'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button onClick={() => { setEditId(s.id); setForm({ ...s, weekdays: s.weekdays || [] }); }}
-                      style={{ fontSize: 12, padding: '3px 9px', cursor: 'pointer', marginRight: 6 }}>Ubah</button>
+                      className="btn btn-outline btn-sm" style={{ marginRight: 6 }}>Edit</button>
                     <button onClick={() => hapusShift(s.id)}
-                      style={{ fontSize: 12, padding: '3px 9px', cursor: 'pointer', color: '#c0392b' }}>Hapus</button>
+                      className="btn btn-danger btn-sm">Delete</button>
                   </td>
                 </tr>
               ))}
-              {shifts.length === 0 ? <tr><td colSpan="5" style={{ color: '#95a5a6' }}>Belum ada shift.</td></tr> : null}
+              {shifts.length === 0 ? <tr><td colSpan="5" style={{ color: '#95a5a6' }}>No shifts yet.</td></tr> : null}
             </tbody>
           </table>
         </div>
@@ -173,15 +172,14 @@ function SettingsShift() {
             <input value={hariBaru.note} onChange={(e) => setHariBaru((f) => ({ ...f, note: e.target.value }))}
               style={{ display: 'block', padding: 6, marginTop: 4, width: '100%' }} />
           </label>
-          <button onClick={simpanHari}
-            style={{ padding: '7px 16px', background: '#1B4F72', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
-            Simpan
+          <button className="btn btn-primary" onClick={simpanHari}>
+            Save
           </button>
         </div>
 
         <div className="table-responsive" style={{ marginTop: 14 }}>
           <table className="data-table">
-            <thead><tr><th>Tanggal</th><th>Jenis</th><th>Catatan</th><th></th></tr></thead>
+            <thead><tr><th>Date</th><th>Kind</th><th>Note</th><th></th></tr></thead>
             <tbody>
               {hari.map((h) => (
                 <tr key={h.id}>
@@ -190,11 +188,11 @@ function SettingsShift() {
                   <td style={{ color: '#7f8c8d' }}>{h.note || '-'}</td>
                   <td>
                     <button onClick={() => hapusHari(h.day)}
-                      style={{ fontSize: 12, padding: '3px 9px', cursor: 'pointer', color: '#c0392b' }}>Hapus</button>
+                      className="btn btn-danger btn-sm">Delete</button>
                   </td>
                 </tr>
               ))}
-              {hari.length === 0 ? <tr><td colSpan="4" style={{ color: '#95a5a6' }}>Belum ada penanda hari khusus.</td></tr> : null}
+              {hari.length === 0 ? <tr><td colSpan="4" style={{ color: '#95a5a6' }}>No special days yet.</td></tr> : null}
             </tbody>
           </table>
         </div>

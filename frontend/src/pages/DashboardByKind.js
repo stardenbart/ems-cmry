@@ -41,7 +41,7 @@ function DashboardByKind() {
         if (r.data.length > 0) setAktif(r.data[0].kind);
         setStatus('');
       })
-      .catch(() => setStatus('gagal memuat daftar besaran'));
+      .catch(() => setStatus('Failed to load quantities'));
   }, []);
 
   const kindAktif = useMemo(() => kinds.find((k) => k.kind === aktif), [kinds, aktif]);
@@ -61,7 +61,7 @@ function DashboardByKind() {
         .then((r) => ({ ...it, data: r.data.data || [] }))
         .catch(() => ({ ...it, data: [] }))))
       .then((hasil) => { setSeri(hasil); setStatus(''); })
-      .catch(() => setStatus('gagal memuat data'));
+      .catch(() => setStatus('Failed to load data'));
   }, [kindAktif, range]);
 
   // Gabungkan seluruh seri ke satu sumbu waktu.
@@ -92,7 +92,7 @@ function DashboardByKind() {
 
   return (
     <div>
-      <h2 className="page-title">Dashboard per Besaran</h2>
+      <h2 className="page-title">Dashboard by Quantity</h2>
 
       {/* Tab jenis besaran, tumbuh sendiri dari data */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -109,7 +109,7 @@ function DashboardByKind() {
           </button>
         ))}
         {kinds.length === 0 && !status ? (
-          <span style={{ color: '#95a5a6', fontSize: 13 }}>Belum ada besaran dengan data tersimpan.</span>
+          <span style={{ color: '#95a5a6', fontSize: 13 }}>No quantity has stored data yet.</span>
         ) : null}
       </div>
 
@@ -177,7 +177,7 @@ function DashboardByKind() {
           <div className="table-responsive">
             <table className="data-table">
               <thead>
-                <tr><th>Device</th><th>Parameter</th><th>Unit</th><th>Agregasi</th><th style={{ textAlign: 'right' }}>Total periode</th></tr>
+                <tr><th>Device</th><th>Parameter</th><th>Unit</th><th>Aggregation</th><th style={{ textAlign: 'right' }}>Total periode</th></tr>
               </thead>
               <tbody>
                 {kindAktif.items.map((it) => {

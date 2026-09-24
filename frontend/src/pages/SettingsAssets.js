@@ -22,7 +22,7 @@ function SettingsAssets() {
   const [pesan, setPesan] = useState('');
 
   const muat = useCallback(() => {
-    api.get('/assets/tree').then((r) => setNodes(r.data)).catch(() => setPesan('gagal memuat pohon'));
+    api.get('/assets/tree').then((r) => setNodes(r.data)).catch(() => setPesan('Failed to load tree'));
     api.get('/devices').then((r) => setDevices(r.data)).catch(() => {});
   }, []);
 
@@ -50,7 +50,7 @@ function SettingsAssets() {
 
   const simpan = async () => {
     setPesan('');
-    if (!form.name.trim()) { setPesan('nama diperlukan'); return; }
+    if (!form.name.trim()) { setPesan('name is required'); return; }
     const body = {
       name: form.name, type: form.type,
       parent_id: form.parent_id ? Number(form.parent_id) : null,
@@ -59,13 +59,13 @@ function SettingsAssets() {
       if (editId) await api.put(`/assets/nodes/${editId}`, body);
       else await api.post('/assets/nodes', body);
       setForm({ name: '', type: 'Line', parent_id: '' }); setEditId(null); muat();
-    } catch (e) { setPesan(e.response?.data?.error || 'gagal menyimpan'); }
+    } catch (e) { setPesan(e.response?.data?.error || 'Failed to save'); }
   };
 
   const hapus = async (n) => {
-    if (!window.confirm(`Hapus node "${n.name}"?`)) return;
+    if (!window.confirm(`Delete node "${n.name}"?`)) return;
     try { await api.delete(`/assets/nodes/${n.id}`); muat(); }
-    catch (e) { setPesan(e.response?.data?.error || 'gagal menghapus'); }
+    catch (e) { setPesan(e.response?.data?.error || 'Failed to delete'); }
   };
 
   const ubahDevice = async (d, field, value) => {
@@ -73,14 +73,14 @@ function SettingsAssets() {
     try {
       await api.put(`/devices/${d.id}`, { [field]: value === '' ? null : value });
       muat();
-    } catch (e) { setPesan(e.response?.data?.error || 'gagal mengubah device'); }
+    } catch (e) { setPesan(e.response?.data?.error || 'Failed to update device'); }
   };
 
   const tanpaNode = devices.filter((d) => !d.asset_node_id);
 
   return (
     <div>
-      <h2 className="page-title">Hierarki Aset</h2>
+      <h2 className="page-title">Asset Hierarchy</h2>
 
       {pesan ? (
         <div className="card" style={{ padding: 12, marginBottom: 12, color: '#c0392b' }}>{pesan}</div>
@@ -88,7 +88,7 @@ function SettingsAssets() {
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', marginBottom: 12 }}>
-          {editId ? `Ubah node #${editId}` : 'Node baru'}
+          {editId ? `Edit node #${editId}` : 'New node'}
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <label style={{ fontSize: 12 }}>Nama
@@ -113,13 +113,12 @@ function SettingsAssets() {
               ))}
             </select>
           </label>
-          <button onClick={simpan}
-            style={{ padding: '7px 16px', background: '#1B4F72', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
-            {editId ? 'Simpan' : 'Tambah'}
+          <button className="btn btn-primary" onClick={simpan}>
+            {editId ? 'Save' : 'Add'}
           </button>
           {editId ? (
             <button onClick={() => { setEditId(null); setForm({ name: '', type: 'Line', parent_id: '' }); }}
-              style={{ padding: '7px 16px', cursor: 'pointer' }}>Batal</button>
+              className="btn btn-outline">Cancel</button>
           ) : null}
         </div>
         <div style={{ fontSize: 11, color: '#7f8c8d', marginTop: 10 }}>
@@ -134,7 +133,7 @@ function SettingsAssets() {
         </div>
         <div className="table-responsive">
           <table className="data-table">
-            <thead><tr><th>Node</th><th>Tipe</th><th>Device</th><th></th></tr></thead>
+            <thead><tr><th>Node</th><th>Type</th><th>Device</th><th></th></tr></thead>
             <tbody>
               {berjenjang.map((n) => (
                 <React.Fragment key={n.id}>
@@ -149,9 +148,9 @@ function SettingsAssets() {
                     <td>{n.device_count}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button onClick={() => { setEditId(n.id); setForm({ name: n.name, type: n.type, parent_id: n.parent_id || '' }); }}
-                        style={{ fontSize: 12, padding: '3px 9px', cursor: 'pointer', marginRight: 6 }}>Ubah</button>
+                        className="btn btn-outline btn-sm" style={{ marginRight: 6 }}>Edit</button>
                       <button onClick={() => hapus(n)}
-                        style={{ fontSize: 12, padding: '3px 9px', cursor: 'pointer', color: '#c0392b' }}>Hapus</button>
+                        className="btn btn-danger btn-sm">Delete</button>
                     </td>
                   </tr>
                   {deviceDi(n.id).map((d) => (
@@ -193,7 +192,7 @@ function SettingsAssets() {
           </div>
           <div className="table-responsive">
             <table className="data-table">
-              <thead><tr><th>Device</th><th>Tempatkan di</th></tr></thead>
+              <thead><tr><th>Device</th><th>Place in</th></tr></thead>
               <tbody>
                 {tanpaNode.map((d) => (
                   <tr key={d.id}>

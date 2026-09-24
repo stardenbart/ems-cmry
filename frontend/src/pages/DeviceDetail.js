@@ -41,7 +41,7 @@ function DeviceDetail() {
   useEffect(() => {
     api.get('/devices')
       .then((res) => { if (res.data.length > 0) setDeviceId(res.data[0].id); })
-      .catch(() => setPesan('gagal memuat daftar device'));
+      .catch(() => setPesan('Failed to load device list'));
   }, []);
 
   useEffect(() => {
@@ -53,7 +53,7 @@ function DeviceDetail() {
         const awal = res.data.parameters.find((p) => p.saved) || res.data.parameters[0];
         setTerpilih(awal ? awal.name : null);
       })
-      .catch((e) => setPesan(e.response?.data?.error || 'gagal memuat parameter'));
+      .catch((e) => setPesan(e.response?.data?.error || 'Failed to load parameters'));
   }, [deviceId]);
 
   useEffect(() => {
@@ -61,7 +61,7 @@ function DeviceDetail() {
     setSeries(null);
     api.get('/dashboards/series', { params: { device_id: deviceId, parameter: terpilih, range } })
       .then((res) => setSeries(res.data))
-      .catch(() => setSeries({ data: [], gagal: true }));
+      .catch(() => setSeries({ data: [], failed: true }));
   }, [deviceId, terpilih, range]);
 
   const live = deviceId && wsData[deviceId] ? wsData[deviceId] : {};

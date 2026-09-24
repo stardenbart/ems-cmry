@@ -7,8 +7,8 @@ import api from '../api/axios';
 const OPERATOR = ['>', '>=', '<', '<=', '==', '!='];
 const SEVERITY = [
   { key: 'info', label: 'Info', warna: '#2980b9' },
-  { key: 'warning', label: 'Peringatan', warna: '#e67e22' },
-  { key: 'critical', label: 'Kritis', warna: '#c0392b' },
+  { key: 'warning', label: 'Warning', warna: '#e67e22' },
+  { key: 'critical', label: 'Critical', warna: '#c0392b' },
 ];
 
 const KOSONG = {
@@ -70,7 +70,7 @@ function SettingsAlarmRules() {
       else await api.post('/alarms/rules', body);
       setForm(KOSONG); setEditId(null); muat();
     } catch (e) {
-      setPesan(e.response?.data?.error || 'gagal menyimpan');
+      setPesan(e.response?.data?.error || 'Failed to save');
     }
   };
 
@@ -85,14 +85,14 @@ function SettingsAlarmRules() {
   };
 
   const hapus = async (id) => {
-    if (!window.confirm('Hapus aturan ini?')) return;
+    if (!window.confirm('Delete this rule?')) return;
     try { await api.delete(`/alarms/rules/${id}`); muat(); }
-    catch (e) { setPesan(e.response?.data?.error || 'gagal menghapus'); }
+    catch (e) { setPesan(e.response?.data?.error || 'Failed to delete'); }
   };
 
   const akui = async (id) => {
     try { await api.post(`/alarms/events/${id}/ack`, {}); muat(); }
-    catch (e) { setPesan(e.response?.data?.error || 'gagal acknowledge'); }
+    catch (e) { setPesan(e.response?.data?.error || 'Failed to acknowledge'); }
   };
 
   const aktif = events.filter((e) => !e.cleared_at);
@@ -100,7 +100,7 @@ function SettingsAlarmRules() {
 
   return (
     <div>
-      <h2 className="page-title">Aturan Alarm</h2>
+      <h2 className="page-title">Alarm Rules</h2>
 
       {pesan ? (
         <div className="card" style={{ padding: 12, marginBottom: 12, color: '#c0392b' }}>{pesan}</div>
@@ -112,7 +112,7 @@ function SettingsAlarmRules() {
           Sedang menyala ({aktif.length})
         </div>
         {aktif.length === 0 ? (
-          <div style={{ color: '#95a5a6', fontSize: 13 }}>Tidak ada alarm aktif.</div>
+          <div style={{ color: '#95a5a6', fontSize: 13 }}>No active alarms.</div>
         ) : (
           <div className="table-responsive">
             <table className="data-table">
@@ -132,10 +132,10 @@ function SettingsAlarmRules() {
                     </td>
                     <td>{e.device_name}</td>
                     <td>{Number(e.value).toFixed(2)} (ambang {Number(e.threshold).toFixed(2)})</td>
-                    <td>{e.acknowledged_at ? `diakui ${e.acknowledged_by}` : 'belum diakui'}</td>
+                    <td>{e.acknowledged_at ? `diakui ${e.acknowledged_by}` : 'not acknowledged'}</td>
                     <td>
                       {!e.acknowledged_at ? (
-                        <button onClick={() => akui(e.id)} style={{ fontSize: 12, padding: '4px 10px', cursor: 'pointer' }}>
+                        <button onClick={() => akui(e.id)} className="btn btn-outline btn-sm">
                           Acknowledge
                         </button>
                       ) : null}
@@ -151,7 +151,7 @@ function SettingsAlarmRules() {
       {/* Perakit aturan */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', marginBottom: 12 }}>
-          {editId ? `Ubah aturan #${editId}` : 'Aturan baru'}
+          {editId ? `Edit rule #${editId}` : 'New rule'}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }}>
@@ -198,7 +198,7 @@ function SettingsAlarmRules() {
             <input type="number" min="0" value={form.hold_seconds}
               onChange={(e) => ubah('hold_seconds', e.target.value)}
               style={{ width: '100%', padding: 6, marginTop: 4 }} />
-            <span style={{ fontSize: 11, color: '#7f8c8d' }}>kondisi harus bertahan selama ini</span>
+            <span style={{ fontSize: 11, color: '#7f8c8d' }}>condition must hold this long</span>
           </label>
 
           <label style={{ fontSize: 12 }}>Tingkat
@@ -208,15 +208,15 @@ function SettingsAlarmRules() {
             </select>
           </label>
 
-          <label style={{ fontSize: 12 }}>Aktif dari
+          <label style={{ fontSize: 12 }}>Enabled dari
             <input type="time" value={form.active_from} onChange={(e) => ubah('active_from', e.target.value)}
               style={{ width: '100%', padding: 6, marginTop: 4 }} />
           </label>
 
-          <label style={{ fontSize: 12 }}>Aktif sampai
+          <label style={{ fontSize: 12 }}>Enabled sampai
             <input type="time" value={form.active_to} onChange={(e) => ubah('active_to', e.target.value)}
               style={{ width: '100%', padding: 6, marginTop: 4 }} />
-            <span style={{ fontSize: 11, color: '#7f8c8d' }}>kosongkan = sepanjang waktu</span>
+            <span style={{ fontSize: 11, color: '#7f8c8d' }}>leave empty = always active</span>
           </label>
 
           <label style={{ fontSize: 12 }}>Penerima email
@@ -239,27 +239,27 @@ function SettingsAlarmRules() {
         </div>
 
         <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
-          <button onClick={simpan} style={{ padding: '7px 18px', background: '#1B4F72', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
-            {editId ? 'Simpan perubahan' : 'Tambah aturan'}
+          <button onClick={simpan} className="btn btn-primary">
+            {editId ? 'Save changes' : 'Add rule'}
           </button>
           {editId ? (
             <button onClick={() => { setEditId(null); setForm(KOSONG); }}
-              style={{ padding: '7px 18px', cursor: 'pointer' }}>Batal</button>
+              className="btn btn-outline">Cancel</button>
           ) : null}
         </div>
       </div>
 
-      {/* Daftar aturan */}
+      {/* Rule list */}
       <div className="card">
         <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', marginBottom: 12 }}>
-          Daftar aturan ({rules.length})
+          Rules ({rules.length})
         </div>
         <div className="table-responsive">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Nama</th><th>Sasaran</th><th>Kondisi</th><th>Tahan</th>
-                <th>Jendela</th><th>Tingkat</th><th>Status</th><th></th>
+                <th>Name</th><th>Target</th><th>Condition</th><th>Tahan</th>
+                <th>Window</th><th>Severity</th><th>Status</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -271,15 +271,15 @@ function SettingsAlarmRules() {
                   <td>{r.hold_seconds}s</td>
                   <td>{r.active_from ? `${r.active_from}–${r.active_to}` : 'selalu'}</td>
                   <td style={{ color: warnaSeverity(r.severity) }}>{r.severity}</td>
-                  <td>{r.enabled ? 'aktif' : 'nonaktif'}</td>
+                  <td>{r.enabled ? 'aktif' : 'disabled'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <button onClick={() => sunting(r)} style={{ fontSize: 12, padding: '3px 9px', cursor: 'pointer', marginRight: 6 }}>Ubah</button>
-                    <button onClick={() => hapus(r.id)} style={{ fontSize: 12, padding: '3px 9px', cursor: 'pointer', color: '#c0392b' }}>Hapus</button>
+                    <button onClick={() => sunting(r)} className="btn btn-outline btn-sm" style={{ marginRight: 6 }}>Edit</button>
+                    <button onClick={() => hapus(r.id)} className="btn btn-danger btn-sm">Delete</button>
                   </td>
                 </tr>
               ))}
               {rules.length === 0 ? (
-                <tr><td colSpan="8" style={{ color: '#95a5a6' }}>Belum ada aturan.</td></tr>
+                <tr><td colSpan="8" style={{ color: '#95a5a6' }}>No rules yet.</td></tr>
               ) : null}
             </tbody>
           </table>

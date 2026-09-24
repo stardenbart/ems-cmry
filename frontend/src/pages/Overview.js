@@ -34,7 +34,7 @@ function Overview() {
         const akar = res.data.find((n) => n.parent_id === null);
         setNodeId(akar ? akar.id : null);
       })
-      .catch(() => setStatus('gagal memuat pohon aset'));
+      .catch(() => setStatus('Failed to load asset tree'));
   }, []);
 
   useEffect(() => {
@@ -42,7 +42,7 @@ function Overview() {
     setStatus('loading');
     api.get(`/assets/${nodeId}/overview`, { params: { range } })
       .then((res) => { setData(res.data); setStatus(''); })
-      .catch((e) => setStatus(e.response?.data?.error || 'gagal memuat ringkasan'));
+      .catch((e) => setStatus(e.response?.data?.error || 'Failed to load summary'));
   }, [nodeId, range]);
 
   // Jalur dari akar ke node terpilih, untuk navigasi menelusuri ke dalam.

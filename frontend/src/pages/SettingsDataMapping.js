@@ -89,7 +89,7 @@ function SettingsDataMapping() {
   const bacaSekarang = async (i) => {
     const p = form.params[i];
     if (!probe.gatewayId || p.address === '' || p.address === null) {
-      setPesan('pilih gateway dan isi alamat dulu');
+      setPesan('select a gateway and enter an address first');
       return;
     }
     setPesan('');
@@ -102,7 +102,7 @@ function SettingsDataMapping() {
       });
       setProbe((s) => ({ ...s, hasil: { ...s.hasil, [i]: r.data.decoded } }));
     } catch (e) {
-      setPesan(e.response?.data?.error || 'gagal membaca register');
+      setPesan(e.response?.data?.error || 'Failed to read register');
     }
   };
 
@@ -126,14 +126,14 @@ function SettingsDataMapping() {
           order: p.order === '' || p.order === null ? i : Number(p.order),
         })),
     };
-    if (payload.params.length === 0) { setPesan('minimal satu parameter dengan nama'); return; }
+    if (payload.params.length === 0) { setPesan('at least one named parameter is required'); return; }
 
     try {
       if (editId) await api.put(`/settings/device-types/${editId}`, payload);
       else await api.post('/settings/device-types', payload);
       setTampilForm(false); setEditId(null); setProbe((p) => ({ ...p, hasil: {} }));
       muat();
-    } catch (err) { setPesan(err.response?.data?.error || 'gagal menyimpan'); }
+    } catch (err) { setPesan(err.response?.data?.error || 'Failed to save'); }
   };
 
   const sunting = (dt) => {
@@ -151,9 +151,9 @@ function SettingsDataMapping() {
   };
 
   const hapusType = async (id) => {
-    if (!window.confirm('Yakin hapus device type ini?')) return;
+    if (!window.confirm('Delete this device type?')) return;
     try { await api.delete(`/settings/device-types/${id}`); muat(); }
-    catch (e) { setPesan(e.response?.data?.error || 'gagal menghapus'); }
+    catch (e) { setPesan(e.response?.data?.error || 'Failed to delete'); }
   };
 
   const eksporType = (id) => {
@@ -171,7 +171,7 @@ function SettingsDataMapping() {
       setPesan(`template "${isi.name}" berhasil diimpor`);
     } catch (e) {
       const d = e.response?.data;
-      setPesan(d?.errors ? `${d.error}: ${d.errors.slice(0, 3).join('; ')}` : (d?.error || 'berkas tidak sah'));
+      setPesan(d?.errors ? `${d.error}: ${d.errors.slice(0, 3).join('; ')}` : (d?.error || 'invalid file'));
     }
     ev.target.value = '';
   };
@@ -189,7 +189,7 @@ function SettingsDataMapping() {
       <div className="card">
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <button className="btn btn-primary" onClick={tampilForm ? () => setTampilForm(false) : baru}>
-            {tampilForm ? 'Batal' : 'Tambah Data Mapping'}
+            {tampilForm ? 'Cancel' : 'Add Data Mapping'}
           </button>
           <label className="btn" style={{ cursor: 'pointer', border: '1px solid #ddd', padding: '6px 14px', borderRadius: 4, fontSize: 13 }}>
             Impor template
@@ -226,16 +226,16 @@ function SettingsDataMapping() {
                 <thead>
                   <tr>
                     <th style={{ width: 30 }}>#</th>
-                    <th style={{ minWidth: 170 }}>Nama</th>
-                    <th style={{ minWidth: 150 }}>Label kartu</th>
+                    <th style={{ minWidth: 170 }}>Name</th>
+                    <th style={{ minWidth: 150 }}>Card label</th>
                     <th style={{ width: 90 }}>Address</th>
                     <th style={{ width: 60 }}>Len</th>
-                    <th style={{ width: 110 }}>Tipe data</th>
-                    <th style={{ width: 120 }}>Besaran</th>
-                    <th style={{ width: 90 }}>Satuan</th>
-                    <th style={{ width: 110 }}>Agregasi</th>
-                    <th style={{ width: 50 }}>Simpan</th>
-                    <th style={{ width: 50 }}>Utama</th>
+                    <th style={{ width: 110 }}>Data type</th>
+                    <th style={{ width: 120 }}>Quantity</th>
+                    <th style={{ width: 90 }}>Unit</th>
+                    <th style={{ width: 110 }}>Aggregation</th>
+                    <th style={{ width: 50 }}>Save</th>
+                    <th style={{ width: 50 }}>Featured</th>
                     <th style={{ width: 150 }}>Aksi</th>
                   </tr>
                 </thead>
@@ -277,7 +277,7 @@ function SettingsDataMapping() {
                         </td>
                         <td style={{ whiteSpace: 'nowrap' }}>
                           <button type="button" onClick={() => bacaSekarang(i)} title="baca register ini dari perangkat"
-                            style={{ fontSize: 11, padding: '2px 7px', cursor: 'pointer', marginRight: 3 }}>Baca</button>
+                            style={{ fontSize: 11, padding: '2px 7px', cursor: 'pointer', marginRight: 3 }}>Read</button>
                           <button type="button" onClick={() => setRinci((r) => ({ ...r, [i]: !r[i] }))}
                             style={{ fontSize: 11, padding: '2px 7px', cursor: 'pointer', marginRight: 3 }}>
                             {rinci[i] ? '−' : '+'}
@@ -300,7 +300,7 @@ function SettingsDataMapping() {
                                   <strong>{k}</strong> = {String(v)}
                                 </span>
                               ))}
-                            <span style={{ color: '#7f8c8d' }}>— pilih tipe data yang nilainya masuk akal</span>
+                            <span style={{ color: '#7f8c8d' }}>— pick the data type whose value makes sense</span>
                           </td>
                         </tr>
                       ) : null}
@@ -360,13 +360,13 @@ function SettingsDataMapping() {
 
             <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
               <button type="button" onClick={tambahBaris} style={{ padding: '6px 14px', cursor: 'pointer' }}>
-                + Tambah parameter
+                + Add parameter
               </button>
               <span style={{ fontSize: 12, color: '#7f8c8d' }}>
                 {form.params.length} baris — tidak ada batas jumlah
               </span>
               <button type="submit" className="btn btn-primary" style={{ marginLeft: 'auto' }}>
-                {editId ? 'Simpan perubahan' : 'Simpan'}
+                {editId ? 'Save changes' : 'Save'}
               </button>
             </div>
             <div style={{ fontSize: 11, color: '#7f8c8d', marginTop: 8 }}>
@@ -380,7 +380,7 @@ function SettingsDataMapping() {
       <div className="card" style={{ marginTop: 16 }}>
         <div className="table-responsive">
           <table className="data-table">
-            <thead><tr><th>Device Type</th><th>Kategori</th><th>Parameter</th><th></th></tr></thead>
+            <thead><tr><th>Device Type</th><th>Category</th><th>Parameter</th><th></th></tr></thead>
             <tbody>
               {types.map((dt) => {
                 const n = (typeof dt.params === 'string' ? JSON.parse(dt.params) : (dt.params || [])).length;
@@ -391,11 +391,11 @@ function SettingsDataMapping() {
                     <td>{n}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button className="btn btn-primary" style={{ marginRight: 6, padding: '4px 12px', fontSize: 12 }}
-                        onClick={() => sunting(dt)}>Ubah</button>
+                        onClick={() => sunting(dt)}>Edit</button>
                       <button style={{ marginRight: 6, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
-                        onClick={() => eksporType(dt.id)}>Ekspor</button>
+                        onClick={() => eksporType(dt.id)}>Export</button>
                       <button className="btn btn-danger" style={{ padding: '4px 12px', fontSize: 12 }}
-                        onClick={() => hapusType(dt.id)}>Hapus</button>
+                        onClick={() => hapusType(dt.id)}>Delete</button>
                     </td>
                   </tr>
                 );

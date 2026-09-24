@@ -55,7 +55,7 @@ function SettingsRoles() {
       setForm({ name: '', description: '', capabilities: [] });
       setEditId(null);
       muatRoles();
-    } catch (e) { setPesan(e.response?.data?.error || 'gagal menyimpan'); }
+    } catch (e) { setPesan(e.response?.data?.error || 'Failed to save'); }
   };
 
   const sunting = (r) => {
@@ -64,14 +64,14 @@ function SettingsRoles() {
   };
 
   const hapus = async (r) => {
-    if (!window.confirm(`Hapus peran ${r.name}?`)) return;
+    if (!window.confirm(`Delete role ${r.name}?`)) return;
     try { await api.delete(`/settings/roles/${r.id}`); muatRoles(); }
-    catch (e) { setPesan(e.response?.data?.error || 'gagal menghapus'); }
+    catch (e) { setPesan(e.response?.data?.error || 'Failed to delete'); }
   };
 
   const tambahTugas = async () => {
     setPesan('');
-    if (!userAktif || !tugasBaru.role_id) { setPesan('pilih user dan peran'); return; }
+    if (!userAktif || !tugasBaru.role_id) { setPesan('select a user and a role'); return; }
     try {
       await api.post(`/settings/users/${userAktif}/roles`, {
         role_id: Number(tugasBaru.role_id),
@@ -79,17 +79,17 @@ function SettingsRoles() {
       });
       setTugasBaru({ role_id: '', asset_node_id: '' });
       muatPenugasan(userAktif);
-    } catch (e) { setPesan(e.response?.data?.error || 'gagal menambah penugasan'); }
+    } catch (e) { setPesan(e.response?.data?.error || 'Failed to add assignment'); }
   };
 
   const hapusTugas = async (id) => {
     try { await api.delete(`/settings/users/${userAktif}/roles/${id}`); muatPenugasan(userAktif); }
-    catch (e) { setPesan(e.response?.data?.error || 'gagal menghapus penugasan'); }
+    catch (e) { setPesan(e.response?.data?.error || 'Failed to remove assignment'); }
   };
 
   return (
     <div>
-      <h2 className="page-title">Peran dan Hak Akses</h2>
+      <h2 className="page-title">Roles and Access</h2>
 
       {pesan ? (
         <div className="card" style={{ padding: 12, marginBottom: 12, color: '#c0392b' }}>{pesan}</div>
@@ -119,35 +119,34 @@ function SettingsRoles() {
             <select value={tugasBaru.asset_node_id}
               onChange={(e) => setTugasBaru((f) => ({ ...f, asset_node_id: e.target.value }))}
               style={{ display: 'block', padding: 6, marginTop: 4, minWidth: 200 }}>
-              <option value="">Seluruh plant</option>
+              <option value="">Whole plant</option>
               {nodes.map((n) => <option key={n.id} value={n.id}>{n.name} ({n.type})</option>)}
             </select>
           </label>
-          <button onClick={tambahTugas}
-            style={{ padding: '7px 16px', background: '#1B4F72', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
-            Tambah
+          <button className="btn btn-primary" onClick={tambahTugas}>
+            Add
           </button>
         </div>
 
         {userAktif ? (
           <div className="table-responsive" style={{ marginTop: 14 }}>
             <table className="data-table">
-              <thead><tr><th>Peran</th><th>Berlaku di</th><th></th></tr></thead>
+              <thead><tr><th>Role</th><th>Applies to</th><th></th></tr></thead>
               <tbody>
                 {penugasan.map((p) => (
                   <tr key={p.id}>
                     <td>{p.role_name}</td>
-                    <td>{p.node_name || 'Seluruh plant'}
+                    <td>{p.node_name || 'Whole plant'}
                       <span style={{ color: '#7f8c8d', fontSize: 11 }}> (termasuk seluruh cabang di bawahnya)</span>
                     </td>
                     <td>
                       <button onClick={() => hapusTugas(p.id)}
-                        style={{ fontSize: 12, padding: '3px 9px', cursor: 'pointer', color: '#c0392b' }}>Cabut</button>
+                        className="btn btn-danger btn-sm">Revoke</button>
                     </td>
                   </tr>
                 ))}
                 {penugasan.length === 0 ? (
-                  <tr><td colSpan="3" style={{ color: '#95a5a6' }}>Belum ada penugasan.</td></tr>
+                  <tr><td colSpan="3" style={{ color: '#95a5a6' }}>No assignments yet.</td></tr>
                 ) : null}
               </tbody>
             </table>
@@ -158,7 +157,7 @@ function SettingsRoles() {
       {/* Perakit peran */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', marginBottom: 12 }}>
-          {editId ? `Ubah peran #${editId}` : 'Peran baru'}
+          {editId ? `Edit role #${editId}` : 'New role'}
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
           <label style={{ fontSize: 12 }}>Nama
@@ -187,13 +186,12 @@ function SettingsRoles() {
         </div>
 
         <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
-          <button onClick={simpan}
-            style={{ padding: '7px 18px', background: '#1B4F72', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
-            {editId ? 'Simpan perubahan' : 'Tambah peran'}
+          <button className="btn btn-primary" onClick={simpan}>
+            {editId ? 'Save changes' : 'Add role'}
           </button>
           {editId ? (
             <button onClick={() => { setEditId(null); setForm({ name: '', description: '', capabilities: [] }); }}
-              style={{ padding: '7px 18px', cursor: 'pointer' }}>Batal</button>
+              className="btn btn-outline">Cancel</button>
           ) : null}
         </div>
         {editId ? (
@@ -203,25 +201,25 @@ function SettingsRoles() {
         ) : null}
       </div>
 
-      {/* Daftar peran */}
+      {/* Role list */}
       <div className="card">
         <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', marginBottom: 12 }}>
-          Daftar peran ({roles.length})
+          Roles ({roles.length})
         </div>
         <div className="table-responsive">
           <table className="data-table">
-            <thead><tr><th>Nama</th><th>Keterangan</th><th>Kapabilitas</th><th>Jenis</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Description</th><th>Capabilities</th><th>Kind</th><th></th></tr></thead>
             <tbody>
               {roles.map((r) => (
                 <tr key={r.id}>
                   <td style={{ fontWeight: 600 }}>{r.name}</td>
                   <td style={{ color: '#7f8c8d' }}>{r.description || '-'}</td>
                   <td>{(r.capabilities || []).length}</td>
-                  <td>{r.is_system ? 'bawaan' : 'buatan'}</td>
+                  <td>{r.is_system ? 'built-in' : 'custom'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <button onClick={() => sunting(r)} style={{ fontSize: 12, padding: '3px 9px', cursor: 'pointer', marginRight: 6 }}>Ubah</button>
+                    <button onClick={() => sunting(r)} className="btn btn-outline btn-sm" style={{ marginRight: 6 }}>Edit</button>
                     {!r.is_system ? (
-                      <button onClick={() => hapus(r)} style={{ fontSize: 12, padding: '3px 9px', cursor: 'pointer', color: '#c0392b' }}>Hapus</button>
+                      <button onClick={() => hapus(r)} className="btn btn-danger btn-sm">Delete</button>
                     ) : null}
                   </td>
                 </tr>
