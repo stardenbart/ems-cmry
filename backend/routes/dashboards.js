@@ -33,15 +33,9 @@ async function hasEnergyActiveData(device_id) {
 // Selisih pertama tiap rentang bernilai NULL (tidak ada pembacaan sebelumnya) dan
 // otomatis diabaikan SUM — sama seperti perilaku MAX-MIN sebelumnya.
 //
-// Selisih yang menjembatani jeda logging juga dibuang (MAX_GAP). Kalau logging
-// sempat berhenti, pembacaan pertama setelah jeda menyimpan seluruh energi selama
-// jeda itu; tanpa filter ini semuanya tertimbun di hari saat logging kembali jalan
-// (jeda 3 hari 18 jam pernah membuat bucket 20 Sep 2026 jadi 67.958 kWh, ~4x hari
-// normal). Energi selama jeda memang tidak terukur, jadi lebih jujur tidak dihitung
-// daripada dibebankan ke satu hari.
-//
-// MAX_GAP = 4x interval logging (LOG_INTERVAL_MINUTES, default 15 menit), memberi
-// toleransi untuk beberapa siklus yang terlewat tanpa ikut menelan jeda panjang.
+// Selisih yang menjembatani jeda logging disebar proporsional sepanjang waktunya,
+// bukan dibuang dan bukan ditimbun di satu bucket. Rinciannya di
+// services/aggregation.js.
 // ────────────────────────────────────────────────────────────────────────────
 const ENERGY_PARAM = 'Active Energy Delivered (Into Load)';
 

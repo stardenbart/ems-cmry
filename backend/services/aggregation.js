@@ -14,10 +14,6 @@ const { convertValue, convertDelta } = require('./units');
 
 const LOG_INTERVAL_MINUTES = parseInt(process.env.LOG_INTERVAL_MINUTES) || 15;
 
-// Selisih yang menjembatani jeda logging dibuang. Tanpa ini, pembacaan pertama
-// setelah jeda membawa seluruh energi selama jeda dan menimbunnya di satu hari
-// (jeda 3 hari 18 jam pernah membuat satu bucket jadi 67.958 kWh, 4x hari normal).
-const MAX_GAP_MINUTES = LOG_INTERVAL_MINUTES * 4;
 
 const RANGES = {
   today:     { truncate: 'hour',  filter: "timestamp >= CURRENT_DATE AT TIME ZONE 'Asia/Jakarta'" },
@@ -36,25 +32,48 @@ function resolveRange(range) {
 // data berbulan-bulan hanya karena satu register salah skala, dan membuat grafik
 // bolong tanpa penjelasan. Datanya tetap dihitung, jumlah baris mencurigakan
 // dilaporkan lewat suspect_count supaya UI bisa menandainya.
+//
+// SELISIH DISEBAR PROPORSIONAL SEPANJANG WAKTUNYA.
+//
+// Versi sebelumnya membuang selisih yang menjembatani jeda logging. Audit 24 Sep
+// 2026 menunjukkan akibatnya terlalu besar: chart harian kurang 3.340 dari
+// 14.492 kWh, atau 23%, hanya karena dua jeda. Akumulator meter sebenarnya sudah
+// tahu persis berapa energi yang lewat selama jeda itu, jadi membuangnya berarti
+// membuang informasi yang akurat.
+//
+// Menimbunnya di satu bucket juga salah: jeda 3 hari 18 jam pernah membuat satu
+// hari terbaca 67.958 kWh. Maka selisihnya dibagi ke setiap bucket sesuai lama
+// irisan waktunya. Totalnya tetap utuh dan sebarannya wajar.
+//
+// GREATEST(0, ...) tetap membuang langkah negatif saat meter di-reset (1 Sep 2026
+// nilainya terjun dari 2.022.839.359 Wh ke 4.499 Wh).
 function counterSql(truncate, filter) {
   return `
-    SELECT period, ROUND(CAST(SUM(delta) AS numeric), 4) AS total,
-           SUM(suspect) AS suspect_count
-    FROM (
-      SELECT date_trunc('${truncate}', timestamp AT TIME ZONE 'Asia/Jakarta') AS period,
-             CASE
-               WHEN timestamp - LAG(timestamp) OVER (ORDER BY timestamp)
-                    <= INTERVAL '${MAX_GAP_MINUTES} minutes'
-               THEN GREATEST(0, value - LAG(value) OVER (ORDER BY timestamp))
-             END AS delta,
+    WITH pasangan AS (
+      SELECT LAG(timestamp AT TIME ZONE 'Asia/Jakarta') OVER (ORDER BY timestamp) AS t0,
+             (timestamp AT TIME ZONE 'Asia/Jakarta') AS t1,
+             GREATEST(0, value - LAG(value) OVER (ORDER BY timestamp)) AS d,
              CASE WHEN quality <> 0 THEN 1 ELSE 0 END AS suspect
-      FROM readings
-      WHERE device_id = :device_id
-        AND parameter = :parameter
-        AND value > 0
-        AND ${filter}
-    ) d
-    GROUP BY period ORDER BY period`;
+        FROM readings
+       WHERE device_id = :device_id
+         AND parameter = :parameter
+         AND value > 0
+         AND ${filter}
+    ),
+    sebar AS (
+      SELECT date_trunc('${truncate}', gs) AS period,
+             p.d * EXTRACT(EPOCH FROM (LEAST(p.t1, gs + INTERVAL '1 ${truncate}') - GREATEST(p.t0, gs)))
+                 / NULLIF(EXTRACT(EPOCH FROM (p.t1 - p.t0)), 0) AS bagian,
+             p.suspect
+        FROM pasangan p
+        CROSS JOIN LATERAL generate_series(date_trunc('${truncate}', p.t0), p.t1, INTERVAL '1 ${truncate}') gs
+       WHERE p.t0 IS NOT NULL AND p.d > 0
+    )
+    SELECT period,
+           ROUND(CAST(SUM(bagian) AS numeric), 4) AS total,
+           SUM(suspect) AS suspect_count
+      FROM sebar
+     GROUP BY period ORDER BY period`;
 }
 
 // Gauge: rata-rata sebagai nilai utama, min dan max sebagai konteks.
@@ -142,7 +161,6 @@ module.exports = {
   buildSql,
   parameterMeta,
   resolveRange,
-  MAX_GAP_MINUTES,
   units,
   invalidateUnits,
   convertValue,
