@@ -113,10 +113,23 @@ router.get('/:id/overview', authenticate, async (req, res) => {
     });
 
     // Kelompokkan menurut besaran dan satuan.
+    //
+    // HANYA parameter ber-flag featured yang masuk ringkasan. Mengelompokkan
+    // seluruh parameter hanya dari kind dan unit menghasilkan angka yang
+    // menyesatkan: arus akan merata-ratakan A, B, C, N, dan Avg sekaligus —
+    // netral ikut terhitung dan Avg terhitung dua kali — sementara tegangan
+    // mencampur L-L (~403 V) dengan L-N (~232 V) menjadi ~316 V yang tidak
+    // berarti apa pun. featured memang disediakan untuk memilih wakil tiap
+    // besaran, dan bisa diatur dari Data Mapping tanpa menyentuh kode.
     const buckets = {};
     for (const d of devices) {
-      for (const p of (paramsByType[d.device_type_id] || [])) {
-        if (p.save === false) continue;
+      const params = paramsByType[d.device_type_id] || [];
+      const wakil = params.filter((p) => p.featured === true && p.save !== false);
+      // Perangkat yang belum punya penanda featured sama sekali tidak
+      // disembunyikan; seluruh parameternya dipakai sebagai cadangan.
+      const dipakai = wakil.length > 0 ? wakil : params.filter((p) => p.save !== false);
+
+      for (const p of dipakai) {
         const key = `${p.kind || 'other'}|${p.unit || '-'}|${p.agg || 'gauge'}`;
         (buckets[key] = buckets[key] || { kind: p.kind, unit: p.unit, agg: p.agg, items: [] })
           .items.push({ device: d, parameter: p.name });
