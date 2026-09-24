@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const { Device, DataGateway, DeviceType, Group } = require('../models');
 const { authenticate, authorize } = require('../middleware/auth');
+const { readDeviceNow, requestReload } = require('../services/modbusReader');
 
 // GET /api/devices - List semua devices
 router.get('/', authenticate, async (req, res) => {
@@ -67,6 +68,7 @@ router.get('/', authenticate, async (req, res) => {
 router.post('/', authenticate, authorize('admin', 'maintenance'), async (req, res) => {
   try {
     const device = await Device.create(req.body);
+    requestReload();
     res.status(201).json(device);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -79,6 +81,7 @@ router.put('/:id', authenticate, authorize('admin', 'maintenance'), async (req, 
     const device = await Device.findByPk(req.params.id);
     if (!device) return res.status(404).json({ error: 'Device tidak ditemukan' });
     await device.update(req.body);
+    requestReload();
     res.json(device);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -91,7 +94,29 @@ router.delete('/:id', authenticate, authorize('admin'), async (req, res) => {
     const device = await Device.findByPk(req.params.id);
     if (!device) return res.status(404).json({ error: 'Device tidak ditemukan' });
     await device.destroy();
+    requestReload();
     res.json({ message: 'Device berhasil dihapus' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/devices/:id/read-now
+// Paksa satu pembacaan di luar jadwal siklus, lalu kembalikan hasilnya.
+// Dipakai UI setelah menyimpan perubahan mapping supaya efeknya langsung terlihat
+// tanpa menunggu siklus polling atau restart service.
+router.post('/:id/read-now', authenticate, authorize('admin', 'maintenance'), async (req, res) => {
+  try {
+    const device = await Device.findByPk(req.params.id);
+    if (!device) return res.status(404).json({ error: 'Device tidak ditemukan' });
+
+    const data = await readDeviceNow(req.params.id);
+    if (!data) {
+      return res.status(503).json({
+        error: 'Perangkat tidak menjawab, atau ada register yang gagal dibaca',
+      });
+    }
+    res.json({ deviceId: device.id, data, timestamp: new Date().toISOString() });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

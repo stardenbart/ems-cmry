@@ -9,6 +9,7 @@ const AlarmLog = require('./AlarmLog');
 const User = require('./User');
 const EnergyConversion = require('./EnergyConversion');
 const SmtpSetting = require('./SmtpSetting');
+const Unit = require('./Unit');
 
 // === RELASI ===
 
@@ -48,4 +49,5 @@ module.exports = {
   User,
   EnergyConversion,
   SmtpSetting,
+  Unit,
 };

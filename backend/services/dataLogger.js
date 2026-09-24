@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const { Reading, Device, DeviceType } = require('../models');
 const { getLatestData } = require('../websocket/wsServer');
+const { qualityMap, coherenceIssues } = require('./validation');
 
 // Configurable via .env: LOG_INTERVAL_MINUTES=15
 const INTERVAL = parseInt(process.env.LOG_INTERVAL_MINUTES) || 15;
@@ -51,6 +52,14 @@ function startDataLogger() {
         const params = deviceTypeMap[deviceId] || [];
         const saveParams = params.filter((p) => p.save === true).map((p) => p.name);
 
+        // Validasi rentang dan koherensi antar-parameter. Hasilnya disimpan
+        // sebagai penanda quality, bukan dibuang, supaya datanya tetap ada
+        // tapi agregasi bisa mengabaikannya.
+        const quality = qualityMap(params, data);
+        for (const issue of coherenceIssues(params, data)) {
+          console.warn(`[DataLogger] device_id=${deviceId} koherensi ${issue.rule}: ${issue.detail}`);
+        }
+
         for (const [parameter, value] of Object.entries(data)) {
           // Skip metadata fields sent alongside readings
           if (['deviceName', 'deviceId', '_timestamp'].includes(parameter)) continue;
@@ -69,7 +78,10 @@ function startDataLogger() {
             continue;
           }
 
-          records.push({ device_id: deviceId, timestamp, parameter, value: numVal });
+          records.push({
+            device_id: deviceId, timestamp, parameter, value: numVal,
+            quality: quality[parameter] !== undefined ? quality[parameter] : 0,
+          });
         }
       }
 

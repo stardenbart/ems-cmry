@@ -23,6 +23,12 @@ const Reading = sequelize.define('Reading', {
     type: DataTypes.DOUBLE,
     allowNull: true,
   },
+  // 0 = good, 1 = suspect (gagal validasi rentang atau koherensi), 2 = estimated
+  quality: {
+    type: DataTypes.SMALLINT,
+    allowNull: false,
+    defaultValue: 0,
+  },
 }, {
   tableName: 'readings',
   timestamps: true,

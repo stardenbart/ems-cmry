@@ -4,6 +4,7 @@ const sequelize = require('../config/database');
 const { authenticate } = require('../middleware/auth');
 const { getLatestData } = require('../websocket/wsServer');
 const EnergyConversion = require('../models/EnergyConversion');
+const agg = require('../services/aggregation');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: cek apakah 'Active Energy Delivered (Into Load)' punya data valid (> 0)
@@ -42,27 +43,14 @@ async function hasEnergyActiveData(device_id) {
 // MAX_GAP = 4x interval logging (LOG_INTERVAL_MINUTES, default 15 menit), memberi
 // toleransi untuk beberapa siklus yang terlewat tanpa ikut menelan jeda panjang.
 // ────────────────────────────────────────────────────────────────────────────
-const LOG_INTERVAL_MINUTES = parseInt(process.env.LOG_INTERVAL_MINUTES) || 15;
-const MAX_GAP_MINUTES = LOG_INTERVAL_MINUTES * 4;
+const ENERGY_PARAM = 'Active Energy Delivered (Into Load)';
 
+// Pembungkus tipis di atas builder generik di services/aggregation.js, supaya
+// rumus counter (selisih positif, tahan reset meter, tahan jeda logging) hanya
+// hidup di satu tempat. Yang ditambahkan di sini cuma konversi Wh -> kWh.
 function energyQuery(truncate, filter) {
-  return `
-    SELECT period, ROUND(CAST(SUM(delta) / 1000 AS numeric), 2) as total
-    FROM (
-      SELECT date_trunc('${truncate}', timestamp AT TIME ZONE 'Asia/Jakarta') as period,
-             CASE
-               WHEN timestamp - LAG(timestamp) OVER (ORDER BY timestamp)
-                    <= INTERVAL '${MAX_GAP_MINUTES} minutes'
-               THEN GREATEST(0, value - LAG(value) OVER (ORDER BY timestamp))
-             END as delta
-      FROM readings
-      WHERE device_id = :device_id
-        AND parameter = 'Active Energy Delivered (Into Load)'
-        AND value > 0
-        AND ${filter}
-    ) d
-    GROUP BY period ORDER BY period
-  `;
+  return `SELECT period, ROUND(CAST(total / 1000 AS numeric), 2) AS total
+            FROM (${agg.buildSql('counter', truncate, filter)}) e`;
 }
 
 // GET /api/dashboards/realtime/:deviceId
@@ -191,7 +179,7 @@ router.get('/energy', authenticate, async (req, res) => {
     let data;
     if (useEnergyActive) {
       data = await sequelize.query(energyQuery(truncate, filter),
-        { replacements: { device_id }, type: QueryTypes.SELECT });
+        { replacements: { device_id, parameter: ENERGY_PARAM }, type: QueryTypes.SELECT });
     } else {
       // Fallback: estimasi dari Active Power Total
       data = await sequelize.query(`
@@ -260,8 +248,8 @@ router.get('/comparison', authenticate, async (req, res) => {
     `;
 
     const [current, previous] = await Promise.all([
-      sequelize.query(buildQuery(currentFilter),  { replacements: { device_id }, type: QueryTypes.SELECT }),
-      sequelize.query(buildQuery(previousFilter), { replacements: { device_id }, type: QueryTypes.SELECT }),
+      sequelize.query(buildQuery(currentFilter),  { replacements: { device_id, parameter: ENERGY_PARAM }, type: QueryTypes.SELECT }),
+      sequelize.query(buildQuery(previousFilter), { replacements: { device_id, parameter: ENERGY_PARAM }, type: QueryTypes.SELECT }),
     ]);
 
     res.json({ current, previous, source: useEnergyActive ? 'energy_active' : 'active_power_estimated' });
@@ -398,6 +386,41 @@ router.get('/group/kva', authenticate, async (req, res) => {
       GROUP BY r.timestamp ORDER BY r.timestamp
     `, { replacements: { group_id, start, end }, type: QueryTypes.SELECT });
     res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// GET /api/dashboards/series?device_id=1&parameter=Pressure%20Line%201&range=today&unit=bar
+//
+// Endpoint generik untuk SEMUA jenis besaran. Rumus agregasinya dipilih dari
+// metadata `agg` milik parameter, bukan dari namanya, sehingga pressure dan
+// temperature terlayani tanpa menambah endpoint baru.
+// ────────────────────────────────────────────────────────────────────────────
+router.get('/series', authenticate, async (req, res) => {
+  try {
+    const { device_id, parameter, range, unit } = req.query;
+    if (!device_id || !parameter) {
+      return res.status(400).json({ error: 'device_id dan parameter diperlukan' });
+    }
+
+    const meta = await agg.parameterMeta(device_id, parameter);
+    if (!meta) return res.status(404).json({ error: 'Parameter tidak ada pada device ini' });
+
+    const aggMode = meta.agg === 'counter' ? 'counter' : 'gauge';
+    const rows = await agg.aggregate({ device_id, parameter, agg: aggMode, range });
+    const target = unit || meta.unit || null;
+    const data = await agg.convertRows(rows, aggMode, meta.unit || null, target);
+
+    res.json({
+      parameter,
+      kind: meta.kind || 'other',
+      agg: aggMode,
+      unit: target,
+      precision: meta.precision !== undefined ? meta.precision : 2,
+      data,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

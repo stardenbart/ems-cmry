@@ -10,6 +10,23 @@ let gateways = {};
 let isRunning = false;
 let pollTimer = null;
 
+// Perubahan mapping diterapkan di batas siklus, bukan di tengah pembacaan.
+// Menukar peta register saat siklus berjalan adalah cara termudah membuat frame
+// Modbus tergeser — mekanisme yang sama dengan bug x65536 pada 23-24 Sep 2026.
+let reloadPending = false;
+
+// Satu bus RS485 hanya boleh dipakai satu pembacaan pada satu waktu. Antrean per
+// gateway menjaga itu, sekaligus membuat gateway yang berbeda bisa jalan paralel.
+const gatewayQueue = {};
+
+function withGateway(gatewayId, fn) {
+  const key = String(gatewayId); // wajib dinormalkan: number dan string harus satu antrean
+  const prev = gatewayQueue[key] || Promise.resolve();
+  const next = prev.then(() => fn(), () => fn());
+  gatewayQueue[key] = next.then(() => {}, () => {});
+  return next;
+}
+
 const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS) || 3000;
 const MAX_CONNECT_RETRIES = 5;
 const connectRetries = {};
@@ -150,46 +167,64 @@ async function readDevice(client, device) {
   return { data: result, failed };
 }
 
+// Baca satu device dan sebarkan hasilnya. Mengembalikan data kalau berhasil,
+// null kalau gateway tidak bisa dibuka atau ada register yang gagal dibaca.
+async function pollDevice(device) {
+  const gateway = gateways[device.data_gateway_id];
+  if (!gateway) return null;
+
+  const client = await connectGateway(gateway);
+  if (!client) return null;
+
+  try {
+    const read = await readDevice(client, device);
+    if (!read) return null;
+    const { data, failed } = read;
+
+    // Timeout meninggalkan balasan telat di buffer connectRTUBuffered; permintaan
+    // berikutnya memakan balasan itu sehingga seluruh register tergeser satu posisi
+    // (energy sempat terbaca x65536 selama 21 jam, 23-24 Sep 2026). Reset koneksi
+    // supaya stream tersinkron ulang, dan jangan sebarkan data yang mungkin bergeser.
+    if (failed > 0) {
+      console.error(`[Modbus] ${device.name}: ${failed} register gagal dibaca - reconnect ${gateway.name}`);
+      try { client.close(); } catch (e) {}
+      delete clients[gateway.id];
+      return null;
+    }
+
+    broadcastData(device.id, {
+      ...data,
+      deviceName: device.name,
+      deviceId: device.id,
+    });
+    checkAlarms(device.id, data);
+    return data;
+  } catch (err) {
+    console.error(`[Modbus] Error reading ${device.name}: ${err.message}`);
+    if (clients[gateway.id]) {
+      try { clients[gateway.id].close(); } catch (e) {}
+      delete clients[gateway.id];
+    }
+    return null;
+  }
+}
+
 async function pollAllDevices() {
   if (!isRunning) return;
 
+  // Terapkan perubahan konfigurasi di sini, sebelum siklus dimulai.
+  if (reloadPending) {
+    reloadPending = false;
+    console.log('[Modbus] Menerapkan konfigurasi baru');
+    await loadConfig();
+  }
+
+  // Sekuensial, sama persis dengan perilaku sebelumnya. Bedanya setiap pembacaan
+  // lewat antrean gateway, sehingga readDeviceNow() dari UI tidak pernah menyelak
+  // di tengah siklus dan menabrak bus yang sama.
+  // ponytail: paralel antar gateway ditunda sampai ada gateway kedua untuk diuji.
   for (const device of devices) {
-    const gateway = gateways[device.data_gateway_id];
-    if (!gateway) continue;
-
-    const client = await connectGateway(gateway);
-    if (!client) continue;
-
-    try {
-      const read = await readDevice(client, device);
-      if (read) {
-        const { data, failed } = read;
-
-        // Timeout meninggalkan balasan telat di buffer connectRTUBuffered; permintaan
-        // berikutnya memakan balasan itu sehingga seluruh register tergeser satu posisi
-        // (energy sempat terbaca x65536 selama 21 jam, 23-24 Sep 2026). Reset koneksi
-        // supaya stream tersinkron ulang, dan jangan sebarkan data yang mungkin bergeser.
-        if (failed > 0) {
-          console.error(`[Modbus] ${device.name}: ${failed} register gagal dibaca - reconnect ${gateway.name}`);
-          try { client.close(); } catch (e) {}
-          delete clients[gateway.id];
-          continue;
-        }
-
-        broadcastData(device.id, {
-          ...data,
-          deviceName: device.name,
-          deviceId: device.id,
-        });
-        checkAlarms(device.id, data);
-      }
-    } catch (err) {
-      console.error(`[Modbus] Error reading ${device.name}: ${err.message}`);
-      if (clients[gateway.id]) {
-        try { clients[gateway.id].close(); } catch (e) {}
-        delete clients[gateway.id];
-      }
-    }
+    await withGateway(device.data_gateway_id, () => pollDevice(device));
   }
 }
 
@@ -296,4 +331,73 @@ async function reloadConfig() {
   await loadConfig();
 }
 
-module.exports = { startModbusReader, stopModbusReader, reloadConfig };
+// Dipanggil route settings setiap konfigurasi berubah. Tidak memuat ulang saat itu
+// juga — hanya menandai, supaya penerapannya jatuh di batas siklus berikutnya.
+function requestReload() {
+  reloadPending = true;
+}
+
+// Baca satu device SEKARANG, di luar jadwal siklus. Dipakai UI supaya hasil
+// perubahan alamat register langsung terlihat tanpa menunggu siklus atau restart.
+// Tetap lewat antrean gateway, jadi tidak pernah bertabrakan dengan poll berjalan.
+async function readDeviceNow(deviceId) {
+  if (reloadPending) {
+    reloadPending = false;
+    await loadConfig();
+  }
+
+  const device = devices.find((d) => String(d.id) === String(deviceId));
+  if (!device) throw new Error(`Device ${deviceId} tidak ditemukan`);
+
+  return withGateway(device.data_gateway_id, () => pollDevice(device));
+}
+
+// ── Register Explorer ───────────────────────────────────────────────────────
+// Baca alamat sembarang lalu tampilkan hasil dekode untuk semua tipe data
+// sekaligus, supaya user memilih yang masuk akal sebelum menyimpan mapping.
+// Kalau fitur ini sudah ada 22 Sep 2026, kesalahan PF Total yang menunjuk alamat
+// Frequency akan ketahuan dalam hitungan detik: nilainya 50,0218, persis Frequency.
+function decodeAll(words) {
+  const out = { raw: words };
+  const buf = Buffer.alloc(8);
+  words.slice(0, 4).forEach((w, i) => buf.writeUInt16BE(w, i * 2));
+
+  if (words.length >= 1) {
+    out.uint16 = words[0];
+    out.int16 = words[0] > 32767 ? words[0] - 65536 : words[0];
+  }
+  if (words.length >= 2) {
+    out.float32be = parseFloat(buf.readFloatBE(0).toFixed(6));
+    const le = Buffer.alloc(4);
+    le.writeUInt16BE(words[1], 0); le.writeUInt16BE(words[0], 2);
+    out.float32le_wordswap = parseFloat(le.readFloatBE(0).toFixed(6));
+    out.int32 = buf.readInt32BE(0);
+  }
+  if (words.length >= 4) {
+    out['int64-be'] = Number(buf.readBigInt64BE(0));
+  }
+  return out;
+}
+
+async function probeRegister({ gatewayId, slaveId, address, length }) {
+  const gateway = gateways[gatewayId];
+  if (!gateway) throw new Error(`Gateway ${gatewayId} tidak ditemukan`);
+
+  return withGateway(gatewayId, async () => {
+    const client = await connectGateway(gateway);
+    if (!client) throw new Error(`Gateway ${gateway.name} tidak bisa dibuka`);
+    client.setID(slaveId);
+    const res = await client.readHoldingRegisters(address, length);
+    return { address, length, slaveId, gateway: gateway.name, decoded: decodeAll(res.data) };
+  });
+}
+
+module.exports = {
+  startModbusReader,
+  stopModbusReader,
+  reloadConfig,
+  requestReload,
+  readDeviceNow,
+  probeRegister,
+  decodeAll,
+};
