@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import './Header.css';
+import { isDesktopApp } from './Sidebar';
 
 function Header({ onToggleSidebar }) {
   const { user, logout } = useAuth();
@@ -19,6 +20,10 @@ function Header({ onToggleSidebar }) {
       </div>
       <div className="header-right">
         <span className="header-user">Welcome, {user?.name}</span>
+        {!isDesktopApp() ? (
+          <button className="btn-header" title="Install EMS as a desktop app with its own icon"
+            onClick={() => navigate('/guide#desktop-app')}>Install App</button>
+        ) : null}
         <button className="btn-header" onClick={() => navigate('/change-password')}>Change Password</button>
         <button className="btn-logout" onClick={logout}>Logout</button>
       </div>
