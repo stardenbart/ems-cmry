@@ -6,16 +6,46 @@ const { getLatestData } = require('../websocket/wsServer');
 const EnergyConversion = require('../models/EnergyConversion');
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Helper: cek apakah 'Energy Active' punya data di DB untuk device ini
-// Kalau tidak ada, fallback pakai estimasi dari 'Active Power Total'
+// Helper: cek apakah 'Active Energy Delivered (Into Load)' punya data valid (> 0)
+// di DB untuk device ini. Kalau tidak ada, fallback pakai estimasi Active Power Total
 // ─────────────────────────────────────────────────────────────────────────────
 async function hasEnergyActiveData(device_id) {
   const result = await sequelize.query(`
     SELECT 1 FROM readings
-    WHERE device_id = :device_id AND parameter = 'Energy Active'
+    WHERE device_id = :device_id
+      AND parameter = 'Active Energy Delivered (Into Load)'
+      AND value > 0
     LIMIT 1
   `, { replacements: { device_id }, type: QueryTypes.SELECT });
   return result.length > 0;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Energy per periode dari register akumulator.
+//
+// Akumulator meter bisa di-reset — terjadi 1 Sep 2026 10:00 WIB, nilainya terjun
+// dari 2.022.839.359 Wh ke 4.499 Wh. Rumus lama MAX-MIN per periode menghitung
+// seluruh angka sebelum reset sebagai pemakaian satu hari (2.026.830 kWh, padahal
+// normalnya ~18.000 kWh). Jumlahkan selisih antar-pembacaan yang positif saja:
+// tahan terhadap reset maupun rollover counter.
+//
+// Selisih pertama tiap rentang bernilai NULL (tidak ada pembacaan sebelumnya) dan
+// otomatis diabaikan SUM — sama seperti perilaku MAX-MIN sebelumnya.
+// ────────────────────────────────────────────────────────────────────────────
+function energyQuery(truncate, filter) {
+  return `
+    SELECT period, ROUND(CAST(SUM(delta) / 1000 AS numeric), 2) as total
+    FROM (
+      SELECT date_trunc('${truncate}', timestamp AT TIME ZONE 'Asia/Jakarta') as period,
+             GREATEST(0, value - LAG(value) OVER (ORDER BY timestamp)) as delta
+      FROM readings
+      WHERE device_id = :device_id
+        AND parameter = 'Active Energy Delivered (Into Load)'
+        AND value > 0
+        AND ${filter}
+    ) d
+    GROUP BY period ORDER BY period
+  `;
 }
 
 // GET /api/dashboards/realtime/:deviceId
@@ -50,31 +80,33 @@ router.get('/energy-conversion', authenticate, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/dashboards/energy-today?device_id=1
 //
-// Mengembalikan:
-//   { base: <nilai Energy Active pertama hari ini>, source: 'energy_active' }
-//   ATAU
-//   { base: null, source: 'none' }  ← kalau belum ada data sama sekali
+// Mengembalikan nilai base energy pertama hari ini (dalam kWh) untuk dihitung
+// selisihnya dengan nilai realtime.
 //
-// Frontend pakai ini untuk hitung: energyToday = energyNow - base
+// source: 'energy_active'          → pakai register akumulator meter (kWh = Wh / 1000)
+// source: 'active_power_estimated' → fallback estimasi dari Active Power Total
+// source: 'none'                   → belum ada data sama sekali
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/energy-today', authenticate, async (req, res) => {
   try {
     const { device_id } = req.query;
     if (!device_id) return res.status(400).json({ error: 'device_id diperlukan' });
 
-    // Coba Energy Active dulu
+    // Coba ambil nilai pertama hari ini dari register energy akumulator (Wh)
     const energyResult = await sequelize.query(`
       SELECT value FROM readings
       WHERE device_id = :device_id
-        AND parameter = 'Energy Active'
+        AND parameter = 'Active Energy Delivered (Into Load)'
+        AND value > 0
         AND timestamp >= CURRENT_DATE AT TIME ZONE 'Asia/Jakarta'
       ORDER BY timestamp ASC
       LIMIT 1
     `, { replacements: { device_id }, type: QueryTypes.SELECT });
 
     if (energyResult.length > 0) {
+      // Konversi Wh → kWh
       return res.json({
-        base: parseFloat(energyResult[0].value),
+        base: parseFloat(energyResult[0].value) / 1000,
         source: 'energy_active',
       });
     }
@@ -106,8 +138,8 @@ router.get('/energy-today', authenticate, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/dashboards/energy?device_id=1&range=thisMonth
 //
-// Kalau 'Energy Active' ada di readings → pakai MAX-MIN per periode (akurat)
-// Kalau tidak ada → estimasi dari 'Active Power Total' × interval (15 menit = 0.25 jam)
+// Kalau register energy ada data valid → pakai MAX-MIN per periode (kWh = Wh / 1000)
+// Kalau tidak ada → estimasi dari Active Power Total × 0.25 jam
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/energy', authenticate, async (req, res) => {
   try {
@@ -141,19 +173,10 @@ router.get('/energy', authenticate, async (req, res) => {
 
     let data;
     if (useEnergyActive) {
-      // Cara akurat: pakai nilai kumulatif meter (MAX - MIN per periode)
-      data = await sequelize.query(`
-        SELECT date_trunc('${truncate}', timestamp AT TIME ZONE 'Asia/Jakarta') as period,
-               GREATEST(0, MAX(value) - MIN(value)) as total
-        FROM readings
-        WHERE device_id = :device_id
-          AND parameter = 'Energy Active'
-          AND ${filter}
-        GROUP BY period ORDER BY period
-      `, { replacements: { device_id }, type: QueryTypes.SELECT });
+      data = await sequelize.query(energyQuery(truncate, filter),
+        { replacements: { device_id }, type: QueryTypes.SELECT });
     } else {
       // Fallback: estimasi dari Active Power Total
-      // Setiap reading mewakili 15 menit = 0.25 jam → kWh = kW × 0.25
       data = await sequelize.query(`
         SELECT date_trunc('${truncate}', timestamp AT TIME ZONE 'Asia/Jakarta') as period,
                ROUND(CAST(SUM(value) * 0.25 AS numeric), 2) as total
@@ -180,11 +203,6 @@ router.get('/comparison', authenticate, async (req, res) => {
     if (!device_id) return res.status(400).json({ error: 'device_id diperlukan' });
 
     const useEnergyActive = await hasEnergyActiveData(device_id);
-    // Pilih parameter dan formula sesuai ketersediaan data
-    const param   = useEnergyActive ? 'Energy Active' : 'Active Power Total';
-    const formula = useEnergyActive
-      ? 'GREATEST(0, MAX(value) - MIN(value))'
-      : 'ROUND(CAST(SUM(value) * 0.25 AS numeric), 2)';
 
     let currentFilter, previousFilter, truncate;
 
@@ -213,11 +231,13 @@ router.get('/comparison', authenticate, async (req, res) => {
         return res.status(400).json({ error: 'Range tidak valid' });
     }
 
-    const buildQuery = (filter) => `
+    const buildQuery = (filter) => useEnergyActive
+      ? energyQuery(truncate, filter)
+      : `
       SELECT date_trunc('${truncate}', timestamp AT TIME ZONE 'Asia/Jakarta') as period,
-             ${formula} as total
+             ROUND(CAST(SUM(value) * 0.25 AS numeric), 2) as total
       FROM readings
-      WHERE device_id = :device_id AND parameter = '${param}'
+      WHERE device_id = :device_id AND parameter = 'Active Power Total'
         AND ${filter}
       GROUP BY period ORDER BY period
     `;

@@ -108,6 +108,7 @@ function SettingsDataMapping() {
                             <option value="int16">Int 16</option>
                             <option value="uint16">UInt 16</option>
                             <option value="int32">Int 32</option>
+                            <option value="int64-be">Int 64 BE</option>
                           </select>
                         </td>
                         <td><input type="number" value={p.length} onChange={(e) => updateParam(i, 'length', e.target.value)} style={{ width: 50, padding: 4, fontSize: 12 }} /></td>

@@ -54,25 +54,18 @@ function EnergyCard({ title, value, unit }) {
 }
 
 function RealtimeDevice() {
-  const [selectedDevice, setSelectedDevice]   = useState(null);
-  const { data: wsData, isConnected }         = useWebSocket();
-  const [powerTrend, setPowerTrend]           = useState([]);
-  const [monthlyData, setMonthlyData]         = useState([]);
-  const [conversion, setConversion]           = useState(null);
+  const [selectedDevice, setSelectedDevice] = useState(null);
+  const { data: wsData, isConnected }       = useWebSocket();
+  const [powerTrend, setPowerTrend]         = useState([]);
+  const [monthlyData, setMonthlyData]       = useState([]);
+  const [conversion, setConversion]         = useState(null);
 
-  // Energy Today: base = nilai Energy Active pertama hari ini dari DB
-  // energyToday = nilaiRealtime - base
-  // Ganti state ini:
-  const [energyBase, setEnergyBase] = useState(null);
-  const [energySource, setEnergySource] = useState(null);
+  // Energy Today state
+  const [energyBase, setEnergyBase]     = useState(null); // nilai Wh pertama hari ini (dalam kWh, sudah /1000)
+  const [energySource, setEnergySource] = useState(null); // 'energy_active' | 'active_power_estimated' | 'none'
+  const [energyFromDb, setEnergyFromDb] = useState(null); // untuk fallback estimasi Active Power
 
-  // Tambah state baru untuk nilai "sudah dari DB":
-  const [energyFromDb, setEnergyFromDb] = useState(null); // total kWh hari ini dari DB
-
-  // Untuk demo mode: akumulasi estimasi dari Active Power Total
-  // (karena demo random, kita simpan "energy sejak halaman dibuka")
-  const demoPowerAccRef = useRef(0);
-  const demoLastTimeRef = useRef(null);
+  const intervalRef = useRef(null);
 
   // ── Load device list & auto-select first ──────────────────────────────────
   useEffect(() => {
@@ -90,27 +83,22 @@ function RealtimeDevice() {
       .catch(() => {});
   }, []);
 
-  // ── Load energy base (nilai Energy Active pertama hari ini dari DB) ───────
-  // Update useEffect energy-today:
+  // ── Load energy base dari DB ───────────────────────────────────────────────
   useEffect(() => {
     if (!selectedDevice) return;
+    setEnergyBase(null);
     setEnergyFromDb(null);
     setEnergySource(null);
-    demoPowerAccRef.current = 0;
-    demoLastTimeRef.current = null;
 
     api.get('/dashboards/energy-today', { params: { device_id: selectedDevice } })
       .then((res) => {
         setEnergySource(res.data.source);
-
         if (res.data.source === 'energy_active') {
-          // Simpan base untuk dikurangi dari nilai realtime
+          // base sudah dalam kWh (backend sudah /1000)
           setEnergyBase(parseFloat(res.data.base));
         } else if (res.data.source === 'active_power_estimated') {
-          // Langsung simpan total kWh hari ini dari DB sebagai starting point
           setEnergyFromDb(parseFloat(res.data.base));
         }
-        // source === 'none' → belum ada data sama sekali, pakai accumulator
       })
       .catch(() => {});
   }, [selectedDevice]);
@@ -118,19 +106,36 @@ function RealtimeDevice() {
   // ── Load monthly energy chart data ────────────────────────────────────────
   useEffect(() => {
     if (!selectedDevice) return;
-    api.get('/dashboards/energy', { params: { device_id: selectedDevice, range: 'thisMonth' } })
-      .then((res) => {
-        // Hilangkan .filter(d => d.kWh > 0) supaya hari dengan nilai kecil tetap tampil
-        const formatted = res.data.map((d) => ({
-          day: new Date(d.period).getDate(),
-          kWh: Math.max(0, parseFloat(d.total) || 0),
-        }));
-        setMonthlyData(formatted);
-      })
-      .catch(() => {});
+
+    const fetchMonthly = () => {
+      api.get('/dashboards/energy', { params: { device_id: selectedDevice, range: 'thisMonth' } })
+        .then((res) => {
+          const formatted = res.data.map((d) => ({
+            day: new Date(d.period).getDate(),
+            kWh: Math.max(0, parseFloat(d.total) || 0),
+          }));
+          setMonthlyData(formatted);
+        })
+        .catch(() => {});
+    }; 
+  
+    fetchMonthly();
+    const now = new Date();
+    const msUntilNext15 = (15 - (now.getMinutes() % 15)) * 60000 - now.getSeconds() * 1000 - now.getMilliseconds();
+
+    const timeout = setTimeout(() => {
+      fetchMonthly();
+      const interval = setInterval(fetchMonthly, 900000);
+      intervalRef.current = interval
+    }, msUntilNext15);
+
+    return () => {
+      clearTimeout(timeout);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   }, [selectedDevice]);
 
-  // ── Ambil data device dari WebSocket ─────────────────────────────────────
+  // ── Ambil data device dari WebSocket ──────────────────────────────────────
   const deviceData = selectedDevice ? (wsData[selectedDevice] || {}) : {};
 
   // ── Power trend dari WebSocket ────────────────────────────────────────────
@@ -139,14 +144,6 @@ function RealtimeDevice() {
     if (power === undefined || power === null) return;
 
     const kW = parseFloat(power) || 0;
-
-    // Akumulasi untuk demo mode (estimasi kWh sejak halaman dibuka)
-    const now = Date.now();
-    if (demoLastTimeRef.current !== null) {
-      const dtJam = (now - demoLastTimeRef.current) / 3_600_000; // ms → jam
-      demoPowerAccRef.current += kW * dtJam;
-    }
-    demoLastTimeRef.current = now;
 
     setPowerTrend((prev) => {
       const next = [...prev, {
@@ -158,25 +155,20 @@ function RealtimeDevice() {
   }, [deviceData['Active Power Total']]);
 
   // ── Hitung energyToday ────────────────────────────────────────────────────
-  // Update kalkulasi energyToday:
   let energyToday = null;
-  const energyNow = parseFloat(deviceData['Energy Active']);
 
-  if (energySource === 'energy_active' && energyBase !== null && !isNaN(energyNow)) {
-    // Data real dari meter
-    energyToday = Math.max(0, energyNow - energyBase);
-
-  } else if (energySource === 'active_power_estimated') {
-    // DB sudah ada data Active Power → pakai nilai dari DB + accumulator sejak refresh
-    const fromDb = energyFromDb ?? 0;
-    const sinceRefresh = demoPowerAccRef.current;
-    energyToday = parseFloat((fromDb + sinceRefresh).toFixed(3));
-
-  } else {
-    // source === 'none': belum ada data di DB sama sekali
-    const acc = demoPowerAccRef.current;
-    energyToday = acc > 0 ? parseFloat(acc.toFixed(3)) : null;
+  if (energySource === 'energy_active' && energyBase !== null) {
+    // Nilai realtime dari WebSocket dalam Wh → konversi ke kWh → kurangi base
+    const energyNowWh = parseFloat(deviceData['Active Energy Delivered (Into Load)']);
+    if (!isNaN(energyNowWh) && energyNowWh > 0) {
+      const energyNowKwh = energyNowWh / 1000;
+      energyToday = Math.max(0, parseFloat((energyNowKwh - energyBase).toFixed(2)));
+    }
+  } else if (energySource === 'active_power_estimated' && energyFromDb !== null) {
+    // Pakai nilai estimasi dari DB — stabil saat refresh, update tiap 15 menit
+    energyToday = energyFromDb;
   }
+  // source === 'none' → energyToday tetap null → tampil '—'
 
   // ── Hitung energyMonth dari data chart ────────────────────────────────────
   const energyMonth = monthlyData.length > 0
@@ -196,6 +188,10 @@ function RealtimeDevice() {
       ? parseFloat(v).toLocaleString('id-ID', { minimumFractionDigits: d, maximumFractionDigits: d })
       : '—';
 
+  // ── Power Factor A: register 3077 dibaca float32be, sudah dalam satuan akhir.
+  // Key tetap 'PF Total' supaya riwayat readings lama tidak terputus. ────────
+  const pfRaw = deviceData['PF Total'];
+
   return (
     <div>
       {/* Header */}
@@ -213,17 +209,17 @@ function RealtimeDevice() {
 
       {/* Row 1: Active Power, Voltage, Current, Frequency */}
       <div className="rt-grid-4">
-        <BigMetricCard title="Active Power"    value={deviceData['Active Power Total']} unit="kW"  icon={BsLightningChargeFill} iconBg="#1B2A4A" />
-        <BigMetricCard title="Voltage L-L"     value={deviceData['Voltage LL Avg']}     unit="V"   icon={BsLightningChargeFill} iconBg="#1B2A4A" />
-        <BigMetricCard title="Current"         value={deviceData['Current Avg']}        unit="A"   icon={MdSpeed}              iconBg="#1B2A4A" />
-        <BigMetricCard title="Frequency"       value={deviceData['Frequency']}          unit="Hz"  icon={MdElectricMeter}      iconBg="#1B2A4A" />
+        <BigMetricCard title="Active Power"  value={deviceData['Active Power Total']} unit="kW"  icon={BsLightningChargeFill} iconBg="#1B2A4A" />
+        <BigMetricCard title="Voltage L-L"   value={deviceData['Voltage L-L Avg']}    unit="V"   icon={BsLightningChargeFill} iconBg="#1B2A4A" />
+        <BigMetricCard title="Current"       value={deviceData['Current Avg']}        unit="A"   icon={MdSpeed}               iconBg="#1B2A4A" />
+        <BigMetricCard title="Frequency"     value={deviceData['Frequency']}          unit="Hz"  icon={MdElectricMeter}       iconBg="#1B2A4A" />
       </div>
 
       {/* Row 2: Energy Today, Energy This Month, Power Factor */}
       <div className="rt-grid-3">
         <EnergyCard title="Energy Today"      value={energyToday}  unit="kWh" />
         <EnergyCard title="Energy This Month" value={energyMonth}  unit="kWh" />
-        <BigMetricCard title="Power Factor Total" value={deviceData['Power Factor Total']} unit="" icon={MdElectricMeter} iconBg="#1B2A4A" />
+        <BigMetricCard title="Power Factor A" value={pfRaw} unit="" icon={MdElectricMeter} iconBg="#1B2A4A" />
       </div>
 
       {/* Energy Conversion Table */}

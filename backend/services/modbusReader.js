@@ -108,6 +108,7 @@ async function readDevice(client, device) {
 
   client.setID(device.address);
   const result = {};
+  let failed = 0;
 
   const params = typeof deviceType.params === 'string'
     ? JSON.parse(deviceType.params)
@@ -129,16 +130,24 @@ async function readDevice(client, device) {
         buf.writeUInt16BE(response.data[0], 0);
         buf.writeUInt16BE(response.data[1], 2);
         result[param.name] = buf.readInt32BE(0);
+      } else if (dataType === 'int64-be') {
+        const buf = Buffer.alloc(8);
+        buf.writeUInt16BE(response.data[0], 0);
+        buf.writeUInt16BE(response.data[1], 2);
+        buf.writeUInt16BE(response.data[2], 4);
+        buf.writeUInt16BE(response.data[3], 6);
+        result[param.name] = Number(buf.readBigInt64BE(0));
       } else {
         result[param.name] = readFloat32BE(response.data);
       }
     } catch (err) {
       result[param.name] = null;
+      failed++;
     }
     await new Promise((r) => setTimeout(r, 50));
   }
 
-  return result;
+  return { data: result, failed };
 }
 
 async function pollAllDevices() {
@@ -152,8 +161,21 @@ async function pollAllDevices() {
     if (!client) continue;
 
     try {
-      const data = await readDevice(client, device);
-      if (data) {
+      const read = await readDevice(client, device);
+      if (read) {
+        const { data, failed } = read;
+
+        // Timeout meninggalkan balasan telat di buffer connectRTUBuffered; permintaan
+        // berikutnya memakan balasan itu sehingga seluruh register tergeser satu posisi
+        // (energy sempat terbaca x65536 selama 21 jam, 23-24 Sep 2026). Reset koneksi
+        // supaya stream tersinkron ulang, dan jangan sebarkan data yang mungkin bergeser.
+        if (failed > 0) {
+          console.error(`[Modbus] ${device.name}: ${failed} register gagal dibaca - reconnect ${gateway.name}`);
+          try { client.close(); } catch (e) {}
+          delete clients[gateway.id];
+          continue;
+        }
+
         broadcastData(device.id, {
           ...data,
           deviceName: device.name,
@@ -240,14 +262,14 @@ function startDemoMode() {
         'Voltage AB':           parseFloat((Math.random() * 5 + 397).toFixed(2)),
         'Voltage BC':           parseFloat((Math.random() * 5 + 397).toFixed(2)),
         'Voltage CA':           parseFloat((Math.random() * 5 + 397).toFixed(2)),
-        'Voltage LL Avg':       parseFloat((Math.random() * 5 + 397).toFixed(2)),
+        'Voltage L-L Avg':       parseFloat((Math.random() * 5 + 397).toFixed(2)),
         'Active Power Total':   activePower,
         'Reactive Power Total': parseFloat((Math.random() * 50 + 200).toFixed(2)),
         'Apparent Power Total': parseFloat((Math.random() * 100 + 900).toFixed(2)),
         'Power Factor Total':   parseFloat((Math.random() * 0.05 + 0.62).toFixed(3)),
         'Frequency':            parseFloat((Math.random() * 0.1 + 50.0).toFixed(2)),
         // Energy Active naik monoton = realistis sebagai nilai odometer meter
-        'Energy Active':        energyActive,
+        'Active Energy Delivered (Into Load)':        energyActive,
         'THD Current A':        parseFloat((Math.random() * 3 + 1).toFixed(2)),
         'THD Current B':        parseFloat((Math.random() * 3 + 1).toFixed(2)),
         'THD Current C':        parseFloat((Math.random() * 3 + 1).toFixed(2)),

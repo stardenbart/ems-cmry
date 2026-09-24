@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:3004/api',
+  baseURL: 'http://172.104.1.81:3010/api',
 });
 
 // Interceptor: tambahkan token ke setiap request
