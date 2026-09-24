@@ -13,9 +13,9 @@ import { formatNilai } from '../components/Common/MetricPanel';
 // sensor tekanan atau suhu memunculkan tabnya tanpa deploy.
 
 const RANGE = [
-  { key: 'today', label: 'Hari ini' },
-  { key: 'thisWeek', label: 'Minggu ini' },
-  { key: 'thisMonth', label: 'Bulan ini' },
+  { key: 'today', label: 'Today' },
+  { key: 'thisWeek', label: 'This week' },
+  { key: 'thisMonth', label: 'This month' },
 ];
 
 const LABEL_KIND = {
@@ -32,7 +32,7 @@ function DashboardByKind() {
   const [aktif, setAktif] = useState(null);
   const [range, setRange] = useState('today');
   const [seri, setSeri] = useState([]);
-  const [status, setStatus] = useState('memuat');
+  const [status, setStatus] = useState('loading');
 
   useEffect(() => {
     api.get('/dashboards/kinds')
@@ -48,7 +48,7 @@ function DashboardByKind() {
 
   useEffect(() => {
     if (!kindAktif) return;
-    setStatus('memuat');
+    setStatus('loading');
     setSeri([]);
 
     // Ambil seluruh parameter jenis ini dari semua device. Dibatasi 8 supaya
@@ -117,7 +117,7 @@ function DashboardByKind() {
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
           <strong style={{ fontSize: 14 }}>{LABEL_KIND[aktif] || aktif}</strong>
           <span style={{ fontSize: 12, color: '#7f8c8d' }}>
-            satuan {satuan} · {agg === 'counter' ? 'akumulasi per periode' : 'rata-rata per periode'}
+            satuan {satuan} · {agg === 'counter' ? 'accumulated per period' : 'average per period'}
           </span>
           <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
             {RANGE.map((r) => (
@@ -177,7 +177,7 @@ function DashboardByKind() {
           <div className="table-responsive">
             <table className="data-table">
               <thead>
-                <tr><th>Device</th><th>Parameter</th><th>Satuan</th><th>Agregasi</th><th style={{ textAlign: 'right' }}>Total periode</th></tr>
+                <tr><th>Device</th><th>Parameter</th><th>Unit</th><th>Agregasi</th><th style={{ textAlign: 'right' }}>Total periode</th></tr>
               </thead>
               <tbody>
                 {kindAktif.items.map((it) => {

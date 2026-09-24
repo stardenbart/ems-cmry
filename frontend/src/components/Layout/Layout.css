@@ -85,6 +85,13 @@
 .btn-danger:hover { background: var(--cimory-red-dark); }
 .btn-warning { background: #F59E0B; color: #fff; }
 .btn-warning:hover { background: #D97706; }
+.btn-outline { background: #fff; color: #475569; border: 1px solid #d5dbe3; }
+.btn-outline:hover { background: #f1f5f9; }
+.btn-outline.active { background: var(--cimory-blue); border-color: var(--cimory-blue); color: #fff; }
+
+/* Ukuran kecil untuk tombol di dalam tabel dan toolbar padat */
+.btn-sm { height: 28px; padding: 4px 11px; font-size: 12px; border-radius: 4px; }
+.btn-xs { height: 22px; padding: 2px 7px; font-size: 11px; border-radius: 3px; }
 
 /* ═══ Toolbar — horizontal flex, aligned items ═══ */
 .toolbar {

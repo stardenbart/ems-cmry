@@ -7,10 +7,10 @@ import MetricPanel, { formatNilai } from '../components/Common/MetricPanel';
 // berbeda, sehingga menambah tingkat hierarki tidak menambah halaman baru.
 
 const RANGE = [
-  { key: 'today', label: 'Hari ini' },
-  { key: 'thisWeek', label: 'Minggu ini' },
-  { key: 'thisMonth', label: 'Bulan ini' },
-  { key: 'thisYear', label: 'Tahun ini' },
+  { key: 'today', label: 'Today' },
+  { key: 'thisWeek', label: 'This week' },
+  { key: 'thisMonth', label: 'This month' },
+  { key: 'thisYear', label: 'This year' },
 ];
 
 const LABEL_KIND = {
@@ -25,7 +25,7 @@ function Overview() {
   const [nodeId, setNodeId] = useState(null);
   const [range, setRange] = useState('today');
   const [data, setData] = useState(null);
-  const [status, setStatus] = useState('memuat');
+  const [status, setStatus] = useState('loading');
 
   useEffect(() => {
     api.get('/assets/tree')
@@ -39,7 +39,7 @@ function Overview() {
 
   useEffect(() => {
     if (!nodeId) return;
-    setStatus('memuat');
+    setStatus('loading');
     api.get(`/assets/${nodeId}/overview`, { params: { range } })
       .then((res) => { setData(res.data); setStatus(''); })
       .catch((e) => setStatus(e.response?.data?.error || 'gagal memuat ringkasan'));
@@ -139,7 +139,7 @@ function Overview() {
               </div>
               <div className="table-responsive">
                 <table className="data-table">
-                  <thead><tr><th>Nama</th><th>Tipe</th><th>Device</th></tr></thead>
+                  <thead><tr><th>Name</th><th>Type</th><th>Device</th></tr></thead>
                   <tbody>
                     {anak.map((n) => (
                       <tr key={n.id} style={{ cursor: 'pointer' }} onClick={() => setNodeId(n.id)}>

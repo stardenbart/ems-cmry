@@ -1,34 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import DeviceSelector from '../components/Common/DeviceSelector';
+import MetricPanel from '../components/Common/MetricPanel';
+import KpiCardEditor from '../components/Common/KpiCardEditor';
 import api from '../api/axios';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar,
 } from 'recharts';
-import { MdElectricMeter, MdSpeed } from 'react-icons/md';
 import { BsLightningChargeFill } from 'react-icons/bs';
-
-function BigMetricCard({ title, value, unit, icon: Icon, iconBg = '#1B2A4A' }) {
-  const display =
-    value !== null && value !== undefined && !isNaN(value)
-      ? parseFloat(value).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-      : '—';
-  return (
-    <div className="rt-card">
-      <div className="rt-card-info">
-        <div className="rt-card-label">{title}</div>
-        <div className="rt-card-value">
-          {display}
-          {display !== '—' && <span className="rt-card-unit">{unit}</span>}
-        </div>
-      </div>
-      <div className="rt-card-icon" style={{ background: iconBg }}>
-        {Icon && <Icon size={24} color="#fff" />}
-      </div>
-    </div>
-  );
-}
 
 function EnergyCard({ title, value, unit }) {
   const display =
@@ -67,6 +47,10 @@ function RealtimeDevice() {
 
   const intervalRef = useRef(null);
 
+  // Kartu KPI kini mengikuti metadata parameter, bukan nama yang ditulis di kode.
+  const [paramMeta, setParamMeta] = useState(null);
+  const [showEditor, setShowEditor] = useState(false);
+
   // ── Load device list & auto-select first ──────────────────────────────────
   useEffect(() => {
     api.get('/devices')
@@ -84,6 +68,15 @@ function RealtimeDevice() {
   }, []);
 
   // ── Load energy base dari DB ───────────────────────────────────────────────
+  const muatMeta = React.useCallback(() => {
+    if (!selectedDevice) return;
+    api.get('/devices/' + selectedDevice + '/parameters')
+      .then((res) => setParamMeta(res.data))
+      .catch(() => setParamMeta(null));
+  }, [selectedDevice]);
+
+  useEffect(() => { muatMeta(); }, [muatMeta]);
+
   useEffect(() => {
     if (!selectedDevice) return;
     setEnergyBase(null);
@@ -189,14 +182,12 @@ function RealtimeDevice() {
       : '—';
 
   // ── Power Factor A: register 3077 dibaca float32be, sudah dalam satuan akhir.
-  // Key tetap 'PF Total' supaya riwayat readings lama tidak terputus. ────────
-  const pfRaw = deviceData['PF Total'];
 
   return (
     <div>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-        <h2 className="page-title" style={{ margin: 0 }}>Data Device</h2>
+        <h2 className="page-title" style={{ margin: 0 }}>Realtime Diagram</h2>
         <span style={{ fontSize: 12 }} className={isConnected ? 'status-connected' : 'status-disconnected'}>
           {isConnected ? '● Connected' : '● Disconnected'}
         </span>
@@ -204,22 +195,42 @@ function RealtimeDevice() {
 
       {/* Device selector */}
       <div className="card" style={{ padding: '12px 20px', marginBottom: 16 }}>
-        <DeviceSelector value={selectedDevice} onChange={setSelectedDevice} label="Select Device" />
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <DeviceSelector value={selectedDevice} onChange={setSelectedDevice} label="Select Device" />
+          </div>
+          <button className="btn btn-outline btn-sm" onClick={() => setShowEditor(!showEditor)}>
+            {showEditor ? 'Close card settings' : 'Configure KPI cards'}
+          </button>
+        </div>
+        {paramMeta ? (
+          <div style={{ fontSize: 11, color: '#7f8c8d', marginTop: 8 }}>
+            {paramMeta.typeName} · address {paramMeta.address} · {paramMeta.parameters.length} parameters
+          </div>
+        ) : null}
       </div>
 
-      {/* Row 1: Active Power, Voltage, Current, Frequency */}
+      {showEditor && paramMeta ? (
+        <KpiCardEditor
+          typeName={paramMeta.typeName}
+          parameters={paramMeta.parameters}
+          live={deviceData}
+          onClose={() => setShowEditor(false)}
+          onSaved={() => { muatMeta(); setShowEditor(false); }}
+        />
+      ) : null}
+
+      {/* KPI cards, chosen from the featured flag in Data Mapping */}
       <div className="rt-grid-4">
-        <BigMetricCard title="Active Power"  value={deviceData['Active Power Total']} unit="kW"  icon={BsLightningChargeFill} iconBg="#1B2A4A" />
-        <BigMetricCard title="Voltage L-L"   value={deviceData['Voltage L-L Avg']}    unit="V"   icon={BsLightningChargeFill} iconBg="#1B2A4A" />
-        <BigMetricCard title="Current"       value={deviceData['Current Avg']}        unit="A"   icon={MdSpeed}               iconBg="#1B2A4A" />
-        <BigMetricCard title="Frequency"     value={deviceData['Frequency']}          unit="Hz"  icon={MdElectricMeter}       iconBg="#1B2A4A" />
+        {(paramMeta ? paramMeta.parameters.filter((p) => p.featured) : []).map((p) => (
+          <MetricPanel key={p.name} meta={{ ...p, label: p.label || p.name }} value={deviceData[p.name]} />
+        ))}
       </div>
 
-      {/* Row 2: Energy Today, Energy This Month, Power Factor */}
+      {/* Energy totals, computed rather than read directly from a register */}
       <div className="rt-grid-3">
         <EnergyCard title="Energy Today"      value={energyToday}  unit="kWh" />
         <EnergyCard title="Energy This Month" value={energyMonth}  unit="kWh" />
-        <BigMetricCard title="Power Factor A" value={pfRaw} unit="" icon={MdElectricMeter} iconBg="#1B2A4A" />
       </div>
 
       {/* Energy Conversion Table */}
