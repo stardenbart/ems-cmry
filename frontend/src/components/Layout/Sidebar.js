@@ -35,6 +35,10 @@ function Sidebar({ isOpen, onClose }) {
       levels: ['admin','maintenance','operator','viewer'],
     },
     {
+      label: 'Dashboard Besaran', key: 'kind-dash', path: '/dashboard/besaran',
+      levels: ['admin','maintenance','operator','viewer'],
+    },
+    {
       label: 'Realtime Diagram', key: 'realtime', path: '/realtime/device',
       levels: ['admin','maintenance','operator','viewer'],
     },
@@ -82,8 +86,10 @@ function Sidebar({ isOpen, onClose }) {
         { label: 'Energy Conversion', path: '/settings/energy-conversion' },
         { label: 'Alarm', path: '/settings/alarm' },
         { label: 'Aturan Alarm', path: '/settings/alarm-rules' },
+        { label: 'Shift dan Kalender', path: '/settings/shift' },
         ...(level === 'admin' ? [
           { label: 'User Management', path: '/settings/users' },
+          { label: 'Peran dan Hak Akses', path: '/settings/roles' },
           { label: 'SMTP', path: '/settings/smtp' },
         ] : []),
       ],

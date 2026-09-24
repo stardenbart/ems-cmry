@@ -420,4 +420,41 @@ router.get('/series', authenticate, async (req, res) => {
   }
 });
 
+// ────────────────────────────────────────────────────────────────────────────
+// GET /api/dashboards/kinds
+//
+// Daftar jenis besaran yang BENAR-BENAR ada datanya, beserta device dan
+// parameter yang memilikinya. Daftar halaman dashboard tumbuh dari sini, jadi
+// memasang sensor jenis baru memunculkan halamannya tanpa deploy.
+// ────────────────────────────────────────────────────────────────────────────
+router.get('/kinds', authenticate, async (req, res) => {
+  try {
+    const rows = await sequelize.query(`
+      SELECT d.id AS device_id, d.name AS device_name, dt.params
+        FROM devices d JOIN device_types dt ON dt.id = d.device_type_id
+       ORDER BY d.name`, { type: QueryTypes.SELECT });
+
+    const kinds = {};
+    for (const r of rows) {
+      const params = typeof r.params === 'string' ? JSON.parse(r.params) : (r.params || []);
+      for (const p of params) {
+        if (p.save === false) continue;
+        const kind = p.kind || 'other';
+        const k = (kinds[kind] = kinds[kind] || { kind, units: new Set(), items: [] });
+        k.units.add(p.unit || '-');
+        k.items.push({
+          deviceId: r.device_id, deviceName: r.device_name,
+          parameter: p.name, unit: p.unit || '-',
+          agg: p.agg || 'gauge', precision: p.precision === undefined ? 2 : p.precision,
+          featured: p.featured === true,
+        });
+      }
+    }
+
+    res.json(Object.values(kinds)
+      .map((k) => ({ kind: k.kind, units: [...k.units], count: k.items.length, items: k.items }))
+      .sort((a, b) => b.count - a.count));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

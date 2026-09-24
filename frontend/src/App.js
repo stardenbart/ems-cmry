@@ -6,6 +6,7 @@ import ErrorBoundary from './components/Common/ErrorBoundary';
 import Login from './pages/Login';
 import Overview from './pages/Overview';
 import DeviceDetail from './pages/DeviceDetail';
+import DashboardByKind from './pages/DashboardByKind';
 import RealtimeDevice from './pages/RealtimeDevice';
 import DashboardEnergy from './pages/DashboardEnergy';
 import DashboardComparison from './pages/DashboardComparison';
@@ -20,6 +21,8 @@ import SettingsGrouping from './pages/SettingsGrouping';
 import SettingsEnergyConversion from './pages/SettingsEnergyConversion';
 import SettingsAlarm from './pages/SettingsAlarm';
 import SettingsAlarmRules from './pages/SettingsAlarmRules';
+import SettingsRoles from './pages/SettingsRoles';
+import SettingsShift from './pages/SettingsShift';
 import SettingsUsers from './pages/SettingsUsers';
 import SettingsSMTP from './pages/SettingsSMTP';
 import ChangePassword from './pages/ChangePassword';
@@ -46,7 +49,10 @@ function AppRoutes() {
       {/* Realtime */}
       <Route path="/overview" element={<ProtectedRoute><Overview /></ProtectedRoute>} />
       <Route path="/device" element={<ProtectedRoute><DeviceDetail /></ProtectedRoute>} />
+      <Route path="/dashboard/besaran" element={<ProtectedRoute><DashboardByKind /></ProtectedRoute>} />
       <Route path="/settings/alarm-rules" element={<ProtectedRoute><SettingsAlarmRules /></ProtectedRoute>} />
+      <Route path="/settings/roles" element={<ProtectedRoute><SettingsRoles /></ProtectedRoute>} />
+      <Route path="/settings/shift" element={<ProtectedRoute><SettingsShift /></ProtectedRoute>} />
       <Route path="/realtime/device" element={<ProtectedRoute><RealtimeDevice /></ProtectedRoute>} />
       <Route path="/realtime/sld" element={<ProtectedRoute><RealtimeDevice /></ProtectedRoute>} />
 

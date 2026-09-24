@@ -1,0 +1,206 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import api from '../api/axios';
+
+// Kalender shift dan hari non-produksi.
+// Prasyarat untuk laporan dan baseline yang jujur: membandingkan hari kerja
+// dengan hari libur tidak bermakna.
+
+const HARI = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+const JENIS_HARI = [
+  { key: 'holiday', label: 'Libur' },
+  { key: 'shutdown', label: 'Shutdown' },
+  { key: 'maintenance', label: 'Maintenance' },
+  { key: 'production', label: 'Hari kerja (padahal biasanya libur)' },
+];
+
+const SHIFT_KOSONG = { name: '', start_time: '', end_time: '', weekdays: [1, 2, 3, 4, 5, 6], enabled: true };
+
+function SettingsShift() {
+  const [shifts, setShifts] = useState([]);
+  const [hari, setHari] = useState([]);
+  const [form, setForm] = useState(SHIFT_KOSONG);
+  const [editId, setEditId] = useState(null);
+  const [hariBaru, setHariBaru] = useState({ day: '', kind: 'holiday', note: '' });
+  const [pesan, setPesan] = useState('');
+
+  const muat = useCallback(() => {
+    api.get('/settings/shifts').then((r) => setShifts(r.data)).catch(() => {});
+    api.get('/settings/calendar').then((r) => setHari(r.data)).catch(() => {});
+  }, []);
+
+  useEffect(() => { muat(); }, [muat]);
+
+  const toggleHari = (h) => setForm((f) => ({
+    ...f,
+    weekdays: f.weekdays.includes(h) ? f.weekdays.filter((x) => x !== h) : [...f.weekdays, h].sort(),
+  }));
+
+  const simpanShift = async () => {
+    setPesan('');
+    try {
+      if (editId) await api.put(`/settings/shifts/${editId}`, form);
+      else await api.post('/settings/shifts', form);
+      setForm(SHIFT_KOSONG); setEditId(null); muat();
+    } catch (e) { setPesan(e.response?.data?.error || 'gagal menyimpan shift'); }
+  };
+
+  const hapusShift = async (id) => {
+    if (!window.confirm('Hapus shift ini?')) return;
+    try { await api.delete(`/settings/shifts/${id}`); muat(); }
+    catch (e) { setPesan(e.response?.data?.error || 'gagal menghapus'); }
+  };
+
+  const simpanHari = async () => {
+    setPesan('');
+    if (!hariBaru.day) { setPesan('tanggal diperlukan'); return; }
+    try {
+      await api.post('/settings/calendar', hariBaru);
+      setHariBaru({ day: '', kind: 'holiday', note: '' });
+      muat();
+    } catch (e) { setPesan(e.response?.data?.error || 'gagal menyimpan penanda hari'); }
+  };
+
+  const hapusHari = async (d) => {
+    try { await api.delete(`/settings/calendar/${String(d).slice(0, 10)}`); muat(); }
+    catch (e) { setPesan(e.response?.data?.error || 'gagal menghapus'); }
+  };
+
+  return (
+    <div>
+      <h2 className="page-title">Shift dan Kalender</h2>
+
+      {pesan ? (
+        <div className="card" style={{ padding: 12, marginBottom: 12, color: '#c0392b' }}>{pesan}</div>
+      ) : null}
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', marginBottom: 12 }}>
+          {editId ? `Ubah shift #${editId}` : 'Shift baru'}
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <label style={{ fontSize: 12 }}>Nama
+            <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              style={{ display: 'block', padding: 6, marginTop: 4, minWidth: 150 }} />
+          </label>
+          <label style={{ fontSize: 12 }}>Mulai
+            <input type="time" value={form.start_time}
+              onChange={(e) => setForm((f) => ({ ...f, start_time: e.target.value }))}
+              style={{ display: 'block', padding: 6, marginTop: 4 }} />
+          </label>
+          <label style={{ fontSize: 12 }}>Selesai
+            <input type="time" value={form.end_time}
+              onChange={(e) => setForm((f) => ({ ...f, end_time: e.target.value }))}
+              style={{ display: 'block', padding: 6, marginTop: 4 }} />
+          </label>
+          <div style={{ fontSize: 12 }}>Hari berlaku
+            <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+              {HARI.map((h, i) => (
+                <button key={h} onClick={() => toggleHari(i)}
+                  style={{
+                    padding: '5px 8px', fontSize: 11, cursor: 'pointer', borderRadius: 3,
+                    border: '1px solid ' + (form.weekdays.includes(i) ? '#1B4F72' : '#ddd'),
+                    background: form.weekdays.includes(i) ? '#1B4F72' : '#fff',
+                    color: form.weekdays.includes(i) ? '#fff' : '#555',
+                  }}>{h}</button>
+              ))}
+            </div>
+          </div>
+          <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input type="checkbox" checked={!!form.enabled}
+              onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))} />
+            Aktif
+          </label>
+          <button onClick={simpanShift}
+            style={{ padding: '7px 16px', background: '#1B4F72', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+            {editId ? 'Simpan' : 'Tambah'}
+          </button>
+          {editId ? (
+            <button onClick={() => { setEditId(null); setForm(SHIFT_KOSONG); }}
+              style={{ padding: '7px 16px', cursor: 'pointer' }}>Batal</button>
+          ) : null}
+        </div>
+
+        <div style={{ fontSize: 11, color: '#7f8c8d', marginTop: 10 }}>
+          Shift yang melewati tengah malam dihitung milik hari saat shift dimulai. Jam 02:00 pada
+          shift 23:00–07:00 tercatat sebagai shift hari sebelumnya, sesuai cara operator menghitungnya.
+        </div>
+
+        <div className="table-responsive" style={{ marginTop: 14 }}>
+          <table className="data-table">
+            <thead><tr><th>Nama</th><th>Jam</th><th>Hari</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {shifts.map((s) => (
+                <tr key={s.id}>
+                  <td>{s.name}</td>
+                  <td>{String(s.start_time).slice(0, 5)}–{String(s.end_time).slice(0, 5)}
+                    {String(s.start_time) > String(s.end_time) ? (
+                      <span style={{ color: '#e67e22', fontSize: 11 }}> (lewat tengah malam)</span>
+                    ) : null}
+                  </td>
+                  <td>{s.weekdays && s.weekdays.length ? s.weekdays.map((d) => HARI[d]).join(' ') : 'setiap hari'}</td>
+                  <td>{s.enabled ? 'aktif' : 'nonaktif'}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <button onClick={() => { setEditId(s.id); setForm({ ...s, weekdays: s.weekdays || [] }); }}
+                      style={{ fontSize: 12, padding: '3px 9px', cursor: 'pointer', marginRight: 6 }}>Ubah</button>
+                    <button onClick={() => hapusShift(s.id)}
+                      style={{ fontSize: 12, padding: '3px 9px', cursor: 'pointer', color: '#c0392b' }}>Hapus</button>
+                  </td>
+                </tr>
+              ))}
+              {shifts.length === 0 ? <tr><td colSpan="5" style={{ color: '#95a5a6' }}>Belum ada shift.</td></tr> : null}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="card">
+        <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', marginBottom: 12 }}>
+          Hari khusus
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <label style={{ fontSize: 12 }}>Tanggal
+            <input type="date" value={hariBaru.day}
+              onChange={(e) => setHariBaru((f) => ({ ...f, day: e.target.value }))}
+              style={{ display: 'block', padding: 6, marginTop: 4 }} />
+          </label>
+          <label style={{ fontSize: 12 }}>Jenis
+            <select value={hariBaru.kind} onChange={(e) => setHariBaru((f) => ({ ...f, kind: e.target.value }))}
+              style={{ display: 'block', padding: 6, marginTop: 4, minWidth: 220 }}>
+              {JENIS_HARI.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
+            </select>
+          </label>
+          <label style={{ fontSize: 12, flex: 1, minWidth: 180 }}>Catatan
+            <input value={hariBaru.note} onChange={(e) => setHariBaru((f) => ({ ...f, note: e.target.value }))}
+              style={{ display: 'block', padding: 6, marginTop: 4, width: '100%' }} />
+          </label>
+          <button onClick={simpanHari}
+            style={{ padding: '7px 16px', background: '#1B4F72', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+            Simpan
+          </button>
+        </div>
+
+        <div className="table-responsive" style={{ marginTop: 14 }}>
+          <table className="data-table">
+            <thead><tr><th>Tanggal</th><th>Jenis</th><th>Catatan</th><th></th></tr></thead>
+            <tbody>
+              {hari.map((h) => (
+                <tr key={h.id}>
+                  <td>{String(h.day).slice(0, 10)}</td>
+                  <td>{(JENIS_HARI.find((k) => k.key === h.kind) || {}).label || h.kind}</td>
+                  <td style={{ color: '#7f8c8d' }}>{h.note || '-'}</td>
+                  <td>
+                    <button onClick={() => hapusHari(h.day)}
+                      style={{ fontSize: 12, padding: '3px 9px', cursor: 'pointer', color: '#c0392b' }}>Hapus</button>
+                  </td>
+                </tr>
+              ))}
+              {hari.length === 0 ? <tr><td colSpan="4" style={{ color: '#95a5a6' }}>Belum ada penanda hari khusus.</td></tr> : null}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default SettingsShift;
