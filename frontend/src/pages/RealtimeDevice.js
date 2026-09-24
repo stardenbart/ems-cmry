@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import DeviceSelector from '../components/Common/DeviceSelector';
-import MetricPanel from '../components/Common/MetricPanel';
+import MetricPanel, { formatNilai, tampilSatuan } from '../components/Common/MetricPanel';
 import KpiCardEditor from '../components/Common/KpiCardEditor';
 import api from '../api/axios';
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, BarChart, Bar,
 } from 'recharts';
 import { BsLightningChargeFill } from 'react-icons/bs';
@@ -33,10 +33,12 @@ function EnergyCard({ title, value, unit }) {
   );
 }
 
+const WARNA_TREN = ['#e74c3c', '#1B4F72', '#27ae60', '#e67e22', '#8e44ad', '#16a085', '#2c3e50', '#d35400'];
+
 function RealtimeDevice() {
   const [selectedDevice, setSelectedDevice] = useState(null);
   const { data: wsData, isConnected }       = useWebSocket();
-  const [powerTrend, setPowerTrend]         = useState([]);
+  const [trend, setTrend]                   = useState([]);
   const [monthlyData, setMonthlyData]       = useState([]);
   const [conversion, setConversion]         = useState(null);
 
@@ -131,21 +133,53 @@ function RealtimeDevice() {
   // ── Ambil data device dari WebSocket ──────────────────────────────────────
   const deviceData = selectedDevice ? (wsData[selectedDevice] || {}) : {};
 
-  // ── Power trend dari WebSocket ────────────────────────────────────────────
+  // ── Kurva live, dipilih dari metadata ────────────────────────────────────
+  // Parameter featured bertipe gauge yang satuannya sama dengan yang pertama,
+  // supaya satu sumbu Y tidak mencampur kW dengan V atau derajat. Untuk PM2200
+  // itu daya aktif; untuk perekam suhu itu seluruh kanal sekaligus.
+  const params = useMemo(() => (paramMeta ? paramMeta.parameters : []), [paramMeta]);
+  const punyaEnergi = params.some((p) => p.kind === 'energy');
+  const trendParams = useMemo(() => {
+    const g = params.filter((p) => p.featured && p.agg !== 'counter');
+    return g.length ? g.filter((p) => p.unit === g[0].unit).slice(0, 8) : [];
+  }, [params]);
+  const trendUnit = trendParams.length ? tampilSatuan(trendParams[0].unit) : '';
+
+  useEffect(() => { setTrend([]); }, [selectedDevice]);
+
+  // Setiap pesan realtime mengganti objek device, jadi referensinya cukup
+  // sebagai pemicu satu titik baru.
+  const snapshot = selectedDevice ? wsData[selectedDevice] : null;
   useEffect(() => {
-    const power = deviceData['Active Power Total'];
-    if (power === undefined || power === null) return;
-
-    const kW = parseFloat(power) || 0;
-
-    setPowerTrend((prev) => {
-      const next = [...prev, {
-        time: new Date().toLocaleTimeString('id-ID'),
-        kW,
-      }];
-      return next.slice(-60);
+    if (!snapshot || trendParams.length === 0) return;
+    const titik = { time: new Date().toLocaleTimeString('en-GB') };
+    trendParams.forEach((p) => {
+      const v = Number(snapshot[p.name]);
+      titik[p.label || p.name] = Number.isFinite(v) ? v : null;
     });
-  }, [deviceData['Active Power Total']]);
+    // 120 titik x 3 detik = 6 menit terakhir.
+    setTrend((prev) => [...prev, titik].slice(-120));
+  }, [snapshot, trendParams]);
+
+  // Statistik per kanal selama jendela live: yang biasanya dicari pada
+  // pemantauan suhu — nilai di luar batas, laju naik/turun (ramp), dan
+  // selisih antar titik ukur yang seharusnya bergerak bersama.
+  const statistik = useMemo(() => trendParams.map((p) => {
+    const k = p.label || p.name;
+    const nilai = trend.map((r) => r[k]).filter((v) => v !== null && v !== undefined);
+    if (nilai.length === 0) return { p, n: 0 };
+    const min = Math.min(...nilai);
+    const max = Math.max(...nilai);
+    const avg = nilai.reduce((s, v) => s + v, 0) / nilai.length;
+    // Laju per menit dari kira-kira satu menit terakhir (20 sampel x 3 detik).
+    const ekor = nilai.slice(-20);
+    const menit = ((ekor.length - 1) * 3) / 60;
+    const laju = menit > 0 ? (ekor[ekor.length - 1] - ekor[0]) / menit : null;
+    return { p, n: nilai.length, now: nilai[nilai.length - 1], min, max, avg, laju };
+  }), [trend, trendParams]);
+
+  const kiniSemua = statistik.filter((s) => s.n > 0).map((s) => s.now);
+  const sebaran = kiniSemua.length > 1 ? Math.max(...kiniSemua) - Math.min(...kiniSemua) : null;
 
   // ── Hitung energyToday ────────────────────────────────────────────────────
   let energyToday = null;
@@ -227,6 +261,7 @@ function RealtimeDevice() {
         ))}
       </div>
 
+      {punyaEnergi ? (<>
       {/* Energy totals, computed rather than read directly from a register */}
       <div className="rt-grid-3">
         <EnergyCard title="Energy Today"      value={energyToday}  unit="kWh" />
@@ -264,28 +299,99 @@ function RealtimeDevice() {
         </div>
       </div>
 
-      {/* Power Trend Chart */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Overview</div>
-        <h3 style={{ margin: '0 0 16px', fontSize: 18, color: '#1B4F72' }}>Power Trend (kW)</h3>
-        <ResponsiveContainer width="100%" height={260}>
-          <AreaChart data={powerTrend}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey="time" fontSize={11} tick={{ fill: '#7f8c8d' }} interval="preserveStartEnd" />
-            <YAxis unit=" kW" fontSize={11} tick={{ fill: '#7f8c8d' }} />
-            <Tooltip />
-            <Area type="monotone" dataKey="kW" stroke="#e74c3c" fill="rgba(231,76,60,0.25)" strokeWidth={2} dot={false} />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
+      </>) : null}
+
+      {/* Live trend of the featured parameters */}
+      {trendParams.length > 0 ? (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+            Live · last 6 minutes
+          </div>
+          <h3 style={{ margin: '0 0 16px', fontSize: 18, color: '#1B4F72' }}>
+            {trendParams.length === 1 ? `${trendParams[0].label || trendParams[0].name} Trend` : 'Trend'}
+            {trendUnit ? ` (${trendUnit})` : ''}
+          </h3>
+          <ResponsiveContainer width="100%" height={280}>
+            <LineChart data={trend}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="time" fontSize={11} tick={{ fill: '#7f8c8d' }} interval="preserveStartEnd" />
+              <YAxis unit={trendUnit ? ` ${trendUnit}` : ''} fontSize={11} tick={{ fill: '#7f8c8d' }} domain={['auto', 'auto']} />
+              <Tooltip />
+              {trendParams.length > 1 ? <Legend wrapperStyle={{ fontSize: 11 }} /> : null}
+              {trendParams.map((p, i) => (
+                <Line key={p.name} type="monotone" dataKey={p.label || p.name}
+                  stroke={WARNA_TREN[i % WARNA_TREN.length]} strokeWidth={2} dot={false} isAnimationActive={false} />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      ) : null}
+
+      {/* Per-channel statistics for non-energy devices (temperature, pressure, ...) */}
+      {!punyaEnergi && statistik.length > 0 ? (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>
+            Channel statistics · live window
+            {sebaran !== null ? (
+              <span style={{ marginLeft: 12, textTransform: 'none', color: '#1B4F72' }}>
+                Spread between channels now: <strong>{formatNilai(sebaran, 1)} {trendUnit}</strong>
+              </span>
+            ) : null}
+          </div>
+          <div className="table-responsive">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Channel</th>
+                  <th style={{ textAlign: 'right' }}>Now</th>
+                  <th style={{ textAlign: 'right' }}>Min</th>
+                  <th style={{ textAlign: 'right' }}>Max</th>
+                  <th style={{ textAlign: 'right' }}>Average</th>
+                  <th style={{ textAlign: 'right' }}>Rate of change</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {statistik.map((s) => {
+                  const u = tampilSatuan(s.p.unit);
+                  const luar = s.n > 0 && (
+                    (s.p.min !== null && s.now < s.p.min) || (s.p.max !== null && s.now > s.p.max));
+                  return (
+                    <tr key={s.p.name}>
+                      <td style={{ fontWeight: 600 }}>{s.p.label || s.p.name}</td>
+                      <td style={{ textAlign: 'right' }}>{s.n ? `${formatNilai(s.now, s.p.precision)} ${u}` : '—'}</td>
+                      <td style={{ textAlign: 'right' }}>{s.n ? formatNilai(s.min, s.p.precision) : '—'}</td>
+                      <td style={{ textAlign: 'right' }}>{s.n ? formatNilai(s.max, s.p.precision) : '—'}</td>
+                      <td style={{ textAlign: 'right' }}>{s.n ? formatNilai(s.avg, s.p.precision) : '—'}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        {s.laju === null || s.laju === undefined
+                          ? '—'
+                          : `${s.laju > 0 ? '+' : ''}${formatNilai(s.laju, 2)} ${u}/min`}
+                      </td>
+                      <td style={{ color: luar ? '#c0392b' : '#27ae60' }}>
+                        {s.n === 0 ? 'no data' : luar ? 'out of range' : 'normal'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontSize: 11, color: '#7f8c8d', marginTop: 8 }}>
+            Status compares against the Min/Max set in Data Mapping. Use Alarm Rules to be notified when a
+            channel leaves its process range for longer than a hold time.
+          </div>
+        </div>
+      ) : null}
 
       {/* Monthly Energy Bar Chart */}
+      {punyaEnergi ? (
       <div className="card">
         <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Overview</div>
         <h3 style={{ margin: '0 0 16px', fontSize: 18, color: '#1B4F72' }}>Energy Usage This Month</h3>
         {monthlyData.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: '#95a5a6', fontSize: 13 }}>
-            Data belum tersedia — menunggu dataLogger menyimpan readings pertama
+            No data yet — waiting for the data logger to store the first readings
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={260}>
@@ -299,6 +405,7 @@ function RealtimeDevice() {
           </ResponsiveContainer>
         )}
       </div>
+      ) : null}
     </div>
   );
 }

@@ -107,13 +107,13 @@ router.get('/rules', authenticate, async (req, res) => {
 router.post('/rules', authenticate, authorize('admin', 'maintenance'), async (req, res) => {
   try {
     const b = req.body || {};
-    if (!b.name || !b.parameter) return res.status(400).json({ error: 'name dan parameter diperlukan' });
-    if (!OPERATOR[b.operator]) return res.status(400).json({ error: 'operator tidak sah' });
+    if (!b.name || !b.parameter) return res.status(400).json({ error: 'name and parameter are required' });
+    if (!OPERATOR[b.operator]) return res.status(400).json({ error: 'invalid operator' });
     if (!b.device_id && !b.asset_node_id) {
-      return res.status(400).json({ error: 'device_id atau asset_node_id diperlukan' });
+      return res.status(400).json({ error: 'device_id or asset_node_id is required' });
     }
     if (b.threshold === undefined || b.threshold === null || Number.isNaN(Number(b.threshold))) {
-      return res.status(400).json({ error: 'threshold diperlukan' });
+      return res.status(400).json({ error: 'threshold is required' });
     }
 
     const [row] = await sequelizeAR.query(`
@@ -143,9 +143,9 @@ router.put('/rules/:id', authenticate, authorize('admin', 'maintenance'), async 
   try {
     const [before] = await sequelizeAR.query('SELECT * FROM alarm_rules WHERE id = :id',
       { replacements: { id: req.params.id }, type: QT.SELECT });
-    if (!before) return res.status(404).json({ error: 'Aturan tidak ditemukan' });
+    if (!before) return res.status(404).json({ error: 'Rule not found' });
     if (req.body.operator && !OPERATOR[req.body.operator]) {
-      return res.status(400).json({ error: 'operator tidak sah' });
+      return res.status(400).json({ error: 'invalid operator' });
     }
 
     const [row] = await sequelizeAR.query(`
@@ -184,7 +184,7 @@ router.delete('/rules/:id', authenticate, authorize('admin'), async (req, res) =
     await sequelizeAR.query('DELETE FROM alarm_rules WHERE id = :id', { replacements: { id: req.params.id } });
     reloadRules();
     await auditAR.record(req, { action: 'delete', entity: 'alarm_rule', entityId: req.params.id });
-    res.json({ message: 'Aturan dihapus' });
+    res.json({ message: 'Rule deleted' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -209,7 +209,7 @@ router.post('/events/:id/ack', authenticate, async (req, res) => {
       UPDATE alarm_events SET acknowledged_at = now(), acknowledged_by = :who
        WHERE id = :id AND acknowledged_at IS NULL RETURNING *`, {
       replacements: { id: req.params.id, who: req.user.username }, type: QT.SELECT });
-    if (!row) return res.status(404).json({ error: 'Kejadian tidak ditemukan atau sudah diakui' });
+    if (!row) return res.status(404).json({ error: 'Event not found or already acknowledged' });
     res.json(row);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -225,7 +225,7 @@ router.put('/templates/:id', authenticate, authorize('admin'), async (req, res) 
   try {
     const [before] = await sequelizeAR.query('SELECT * FROM email_templates WHERE id = :id',
       { replacements: { id: req.params.id }, type: QT.SELECT });
-    if (!before) return res.status(404).json({ error: 'Template tidak ditemukan' });
+    if (!before) return res.status(404).json({ error: 'Template not found' });
     const [row] = await sequelizeAR.query(`
       UPDATE email_templates SET subject = COALESCE(:subject, subject),
              body = COALESCE(:body, body), updated_at = now()

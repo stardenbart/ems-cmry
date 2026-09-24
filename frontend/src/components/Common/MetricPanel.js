@@ -31,6 +31,14 @@ function warnaStatus(value, meta) {
   return null;
 }
 
+// Simbol satuan untuk tampilan. Satuan suhu disimpan sebagai 'degC'/'degF'
+// supaya aman dari masalah encoding; di layar tetap ditulis dengan simbol derajat.
+const SIMBOL = { degC: '°C', degF: '°F', '-': '' };
+export function tampilSatuan(unit) {
+  if (!unit) return '';
+  return SIMBOL[unit] !== undefined ? SIMBOL[unit] : unit;
+}
+
 export function formatNilai(value, precision) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
   const d = precision === undefined || precision === null ? 2 : precision;
@@ -43,10 +51,10 @@ export function formatNilai(value, precision) {
 function MetricPanel({ meta, value, suspect, subtitle }) {
   const Icon = IKON[meta.kind] || MdShowChart;
   const warna = warnaStatus(value, meta);
-  const satuan = meta.unit && meta.unit !== '-' ? meta.unit : '';
+  const satuan = tampilSatuan(meta.unit);
 
   return (
-    <div className="rt-card" title={suspect ? 'Sebagian data ditandai perlu diperiksa' : undefined}>
+    <div className="rt-card" title={suspect ? 'Some of this data is flagged for review' : undefined}>
       <div className="rt-card-info">
         <div className="rt-card-label">
           {meta.label || meta.name}

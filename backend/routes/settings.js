@@ -409,7 +409,7 @@ router.post('/shifts', authenticate, authorize('admin', 'maintenance'), async (r
   try {
     const b = req.body || {};
     if (!b.name || !b.start_time || !b.end_time) {
-      return res.status(400).json({ error: 'name, start_time, dan end_time diperlukan' });
+      return res.status(400).json({ error: 'name, start_time and end_time are required' });
     }
     const [row] = await sequelize.query(`
       INSERT INTO shifts (name, start_time, end_time, weekdays, enabled)
@@ -429,7 +429,7 @@ router.put('/shifts/:id', authenticate, authorize('admin', 'maintenance'), async
   try {
     const [before] = await sequelize.query('SELECT * FROM shifts WHERE id = :id',
       { replacements: { id: req.params.id }, type: QueryTypes.SELECT });
-    if (!before) return res.status(404).json({ error: 'Shift tidak ditemukan' });
+    if (!before) return res.status(404).json({ error: 'Shift not found' });
     const [row] = await sequelize.query(`
       UPDATE shifts SET name = COALESCE(:name, name),
              start_time = COALESCE(:start_time, start_time),
@@ -457,7 +457,7 @@ router.delete('/shifts/:id', authenticate, authorize('admin'), async (req, res) 
   try {
     await sequelize.query('DELETE FROM shifts WHERE id = :id', { replacements: { id: req.params.id } });
     await audit.record(req, { action: 'delete', entity: 'shift', entityId: req.params.id });
-    res.json({ message: 'Shift dihapus' });
+    res.json({ message: 'Shift deleted' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -479,7 +479,7 @@ router.get('/calendar', authenticate, async (req, res) => {
 router.post('/calendar', authenticate, authorize('admin', 'maintenance'), async (req, res) => {
   try {
     const { day, kind, note } = req.body || {};
-    if (!day || !kind) return res.status(400).json({ error: 'day dan kind diperlukan' });
+    if (!day || !kind) return res.status(400).json({ error: 'day and kind are required' });
     const [row] = await sequelize.query(`
       INSERT INTO calendar_days (day, kind, note) VALUES (:day, :kind, :note)
       ON CONFLICT (day) DO UPDATE SET kind = EXCLUDED.kind, note = EXCLUDED.note
@@ -494,7 +494,7 @@ router.delete('/calendar/:day', authenticate, authorize('admin', 'maintenance'),
     await sequelize.query('DELETE FROM calendar_days WHERE day = :day',
       { replacements: { day: req.params.day } });
     await audit.record(req, { action: 'delete', entity: 'calendar_day', entityId: req.params.day });
-    res.json({ message: 'Penanda hari dihapus' });
+    res.json({ message: 'Special day deleted' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -544,7 +544,7 @@ router.put('/roles/:id', authenticate, authorize('admin'), async (req, res) => {
   try {
     const [before] = await sequelize.query('SELECT * FROM roles WHERE id = :id',
       { replacements: { id: req.params.id }, type: QueryTypes.SELECT, transaction: t });
-    if (!before) { await t.rollback(); return res.status(404).json({ error: 'Peran tidak ditemukan' }); }
+    if (!before) { await t.rollback(); return res.status(404).json({ error: 'Role not found' }); }
 
     await sequelize.query(`
       UPDATE roles SET name = COALESCE(:name, name),
@@ -578,12 +578,12 @@ router.delete('/roles/:id', authenticate, authorize('admin'), async (req, res) =
   try {
     const [row] = await sequelize.query('SELECT * FROM roles WHERE id = :id',
       { replacements: { id: req.params.id }, type: QueryTypes.SELECT });
-    if (!row) return res.status(404).json({ error: 'Peran tidak ditemukan' });
-    if (row.is_system) return res.status(400).json({ error: 'Peran bawaan tidak bisa dihapus' });
+    if (!row) return res.status(404).json({ error: 'Role not found' });
+    if (row.is_system) return res.status(400).json({ error: 'Built-in roles cannot be deleted' });
 
     await sequelize.query('DELETE FROM roles WHERE id = :id', { replacements: { id: req.params.id } });
     await audit.record(req, { action: 'delete', entity: 'role', entityId: req.params.id, before: row });
-    res.json({ message: 'Peran dihapus' });
+    res.json({ message: 'Role deleted' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -604,7 +604,7 @@ router.get('/users/:id/roles', authenticate, authorize('admin'), async (req, res
 router.post('/users/:id/roles', authenticate, authorize('admin'), async (req, res) => {
   try {
     const { role_id, asset_node_id } = req.body || {};
-    if (!role_id) return res.status(400).json({ error: 'role_id diperlukan' });
+    if (!role_id) return res.status(400).json({ error: 'role_id is required' });
 
     const [row] = await sequelize.query(`
       INSERT INTO user_roles (user_id, role_id, asset_node_id)
@@ -616,7 +616,7 @@ router.post('/users/:id/roles', authenticate, authorize('admin'), async (req, re
     await sequelize.query('UPDATE users SET token_version = token_version + 1 WHERE id = :id',
       { replacements: { id: req.params.id } });
     await audit.record(req, { action: 'create', entity: 'user_role', entityId: req.params.id, after: { role_id, asset_node_id } });
-    res.status(201).json(row || { message: 'Penugasan sudah ada' });
+    res.status(201).json(row || { message: 'Assignment already exists' });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
@@ -633,14 +633,14 @@ router.delete('/users/:userId/roles/:id', authenticate, authorize('admin'), asyn
       { replacements: { id: req.params.id }, type: QueryTypes.SELECT });
 
     if (ini && ini.name === 'admin' && Number(cek.n) === 0) {
-      return res.status(400).json({ error: 'Ini penugasan admin terakhir, tidak bisa dihapus' });
+      return res.status(400).json({ error: 'This is the last admin assignment and cannot be removed' });
     }
 
     await sequelize.query('DELETE FROM user_roles WHERE id = :id', { replacements: { id: req.params.id } });
     await sequelize.query('UPDATE users SET token_version = token_version + 1 WHERE id = :id',
       { replacements: { id: req.params.userId } });
     await audit.record(req, { action: 'delete', entity: 'user_role', entityId: req.params.id });
-    res.json({ message: 'Penugasan dihapus' });
+    res.json({ message: 'Assignment removed' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

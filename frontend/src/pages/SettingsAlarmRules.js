@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api/axios';
+import { tampilSatuan } from '../components/Common/MetricPanel';
 
 // Perakit aturan alarm. Parameter yang bisa dipilih diambil dari metadata device,
 // jadi sensor jenis apa pun langsung bisa dijadikan alarm tanpa perubahan kode.
@@ -109,7 +110,7 @@ function SettingsAlarmRules() {
       {/* Alarm yang sedang menyala */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', marginBottom: 12 }}>
-          Sedang menyala ({aktif.length})
+          Active alarms ({aktif.length})
         </div>
         {aktif.length === 0 ? (
           <div style={{ color: '#95a5a6', fontSize: 13 }}>No active alarms.</div>
@@ -117,7 +118,7 @@ function SettingsAlarmRules() {
           <div className="table-responsive">
             <table className="data-table">
               <thead>
-                <tr><th>Waktu</th><th>Aturan</th><th>Device</th><th>Nilai</th><th>Status</th><th></th></tr>
+                <tr><th>Time</th><th>Rule</th><th>Device</th><th>Value</th><th>Status</th><th></th></tr>
               </thead>
               <tbody>
                 {aktif.map((e) => (
@@ -131,8 +132,8 @@ function SettingsAlarmRules() {
                       {e.rule_name}
                     </td>
                     <td>{e.device_name}</td>
-                    <td>{Number(e.value).toFixed(2)} (ambang {Number(e.threshold).toFixed(2)})</td>
-                    <td>{e.acknowledged_at ? `diakui ${e.acknowledged_by}` : 'not acknowledged'}</td>
+                    <td>{Number(e.value).toFixed(2)} (threshold {Number(e.threshold).toFixed(2)})</td>
+                    <td>{e.acknowledged_at ? `acknowledged by ${e.acknowledged_by}` : 'not acknowledged'}</td>
                     <td>
                       {!e.acknowledged_at ? (
                         <button onClick={() => akui(e.id)} className="btn btn-outline btn-sm">
@@ -155,7 +156,7 @@ function SettingsAlarmRules() {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }}>
-          <label style={{ fontSize: 12 }}>Nama
+          <label style={{ fontSize: 12 }}>Name
             <input value={form.name} onChange={(e) => ubah('name', e.target.value)}
               style={{ width: '100%', padding: 6, marginTop: 4 }} />
           </label>
@@ -163,15 +164,15 @@ function SettingsAlarmRules() {
           <label style={{ fontSize: 12 }}>Device
             <select value={form.device_id} onChange={(e) => { ubah('device_id', e.target.value); ubah('asset_node_id', ''); }}
               style={{ width: '100%', padding: 6, marginTop: 4 }}>
-              <option value="">— pilih device —</option>
+              <option value="">— select device —</option>
               {devices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           </label>
 
-          <label style={{ fontSize: 12 }}>atau Node aset
+          <label style={{ fontSize: 12 }}>or Asset node
             <select value={form.asset_node_id} onChange={(e) => { ubah('asset_node_id', e.target.value); ubah('device_id', ''); }}
               style={{ width: '100%', padding: 6, marginTop: 4 }}>
-              <option value="">— pilih node —</option>
+              <option value="">— select node —</option>
               {nodes.map((n) => <option key={n.id} value={n.id}>{n.name} ({n.type})</option>)}
             </select>
           </label>
@@ -179,53 +180,53 @@ function SettingsAlarmRules() {
           <label style={{ fontSize: 12 }}>Parameter
             <select value={form.parameter} onChange={(e) => ubah('parameter', e.target.value)}
               style={{ width: '100%', padding: 6, marginTop: 4 }}>
-              <option value="">— pilih parameter —</option>
-              {params.map((p) => <option key={p.name} value={p.name}>{p.name} ({p.unit})</option>)}
+              <option value="">— select parameter —</option>
+              {params.map((p) => <option key={p.name} value={p.name}>{p.label || p.name}{tampilSatuan(p.unit) ? ` (${tampilSatuan(p.unit)})` : ''}</option>)}
             </select>
           </label>
 
-          <label style={{ fontSize: 12 }}>Kondisi
+          <label style={{ fontSize: 12 }}>Condition
             <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
               <select value={form.operator} onChange={(e) => ubah('operator', e.target.value)} style={{ padding: 6 }}>
                 {OPERATOR.map((o) => <option key={o} value={o}>{o}</option>)}
               </select>
-              <input type="number" step="any" value={form.threshold} placeholder="ambang"
+              <input type="number" step="any" value={form.threshold} placeholder="threshold"
                 onChange={(e) => ubah('threshold', e.target.value)} style={{ flex: 1, padding: 6 }} />
             </div>
           </label>
 
-          <label style={{ fontSize: 12 }}>Durasi tahan (detik)
+          <label style={{ fontSize: 12 }}>Hold time (seconds)
             <input type="number" min="0" value={form.hold_seconds}
               onChange={(e) => ubah('hold_seconds', e.target.value)}
               style={{ width: '100%', padding: 6, marginTop: 4 }} />
             <span style={{ fontSize: 11, color: '#7f8c8d' }}>condition must hold this long</span>
           </label>
 
-          <label style={{ fontSize: 12 }}>Tingkat
+          <label style={{ fontSize: 12 }}>Severity
             <select value={form.severity} onChange={(e) => ubah('severity', e.target.value)}
               style={{ width: '100%', padding: 6, marginTop: 4 }}>
               {SEVERITY.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
           </label>
 
-          <label style={{ fontSize: 12 }}>Enabled dari
+          <label style={{ fontSize: 12 }}>Active from
             <input type="time" value={form.active_from} onChange={(e) => ubah('active_from', e.target.value)}
               style={{ width: '100%', padding: 6, marginTop: 4 }} />
           </label>
 
-          <label style={{ fontSize: 12 }}>Enabled sampai
+          <label style={{ fontSize: 12 }}>Active until
             <input type="time" value={form.active_to} onChange={(e) => ubah('active_to', e.target.value)}
               style={{ width: '100%', padding: 6, marginTop: 4 }} />
             <span style={{ fontSize: 11, color: '#7f8c8d' }}>leave empty = always active</span>
           </label>
 
-          <label style={{ fontSize: 12 }}>Penerima email
+          <label style={{ fontSize: 12 }}>Email recipients
             <input value={form.recipients} placeholder="a@x.com, b@x.com"
               onChange={(e) => ubah('recipients', e.target.value)}
               style={{ width: '100%', padding: 6, marginTop: 4 }} />
           </label>
 
-          <label style={{ fontSize: 12 }}>Template email
+          <label style={{ fontSize: 12 }}>Email template
             <select value={form.email_template} onChange={(e) => ubah('email_template', e.target.value)}
               style={{ width: '100%', padding: 6, marginTop: 4 }}>
               {templates.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
@@ -234,7 +235,7 @@ function SettingsAlarmRules() {
 
           <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 8, marginTop: 18 }}>
             <input type="checkbox" checked={!!form.enabled} onChange={(e) => ubah('enabled', e.target.checked)} />
-            Aktif
+            Enabled
           </label>
         </div>
 
@@ -258,7 +259,7 @@ function SettingsAlarmRules() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Name</th><th>Target</th><th>Condition</th><th>Tahan</th>
+                <th>Name</th><th>Target</th><th>Condition</th><th>Hold</th>
                 <th>Window</th><th>Severity</th><th>Status</th><th></th>
               </tr>
             </thead>
@@ -269,9 +270,9 @@ function SettingsAlarmRules() {
                   <td>{r.device_name || r.node_name || '-'}</td>
                   <td>{r.parameter} {r.operator} {r.threshold}</td>
                   <td>{r.hold_seconds}s</td>
-                  <td>{r.active_from ? `${r.active_from}–${r.active_to}` : 'selalu'}</td>
+                  <td>{r.active_from ? `${r.active_from}–${r.active_to}` : 'always'}</td>
                   <td style={{ color: warnaSeverity(r.severity) }}>{r.severity}</td>
-                  <td>{r.enabled ? 'aktif' : 'disabled'}</td>
+                  <td>{r.enabled ? 'enabled' : 'disabled'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button onClick={() => sunting(r)} className="btn btn-outline btn-sm" style={{ marginRight: 6 }}>Edit</button>
                     <button onClick={() => hapus(r.id)} className="btn btn-danger btn-sm">Delete</button>

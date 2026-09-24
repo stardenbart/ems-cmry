@@ -5,7 +5,7 @@ import api from '../api/axios';
 // Prasyarat untuk laporan dan baseline yang jujur: membandingkan hari kerja
 // dengan hari libur tidak bermakna.
 
-const HARI = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+const HARI = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const JENIS_HARI = [
   { key: 'holiday', label: 'Holiday' },
   { key: 'shutdown', label: 'Shutdown' },
@@ -67,7 +67,7 @@ function SettingsShift() {
 
   return (
     <div>
-      <h2 className="page-title">Shifts and Calendar</h2>
+      <h2 className="page-title">Shifts & Calendar</h2>
 
       {pesan ? (
         <div className="card" style={{ padding: 12, marginBottom: 12, color: '#c0392b' }}>{pesan}</div>
@@ -78,21 +78,21 @@ function SettingsShift() {
           {editId ? `Edit shift #${editId}` : 'New shift'}
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <label style={{ fontSize: 12 }}>Nama
+          <label style={{ fontSize: 12 }}>Name
             <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               style={{ display: 'block', padding: 6, marginTop: 4, minWidth: 150 }} />
           </label>
-          <label style={{ fontSize: 12 }}>Mulai
+          <label style={{ fontSize: 12 }}>Start
             <input type="time" value={form.start_time}
               onChange={(e) => setForm((f) => ({ ...f, start_time: e.target.value }))}
               style={{ display: 'block', padding: 6, marginTop: 4 }} />
           </label>
-          <label style={{ fontSize: 12 }}>Selesai
+          <label style={{ fontSize: 12 }}>End
             <input type="time" value={form.end_time}
               onChange={(e) => setForm((f) => ({ ...f, end_time: e.target.value }))}
               style={{ display: 'block', padding: 6, marginTop: 4 }} />
           </label>
-          <div style={{ fontSize: 12 }}>Hari berlaku
+          <div style={{ fontSize: 12 }}>Active days
             <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
               {HARI.map((h, i) => (
                 <button key={h} onClick={() => toggleHari(i)}
@@ -108,7 +108,7 @@ function SettingsShift() {
           <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
             <input type="checkbox" checked={!!form.enabled}
               onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))} />
-            Aktif
+            Enabled
           </label>
           <button className="btn btn-primary" onClick={simpanShift}>
             {editId ? 'Save' : 'Add'}
@@ -120,24 +120,24 @@ function SettingsShift() {
         </div>
 
         <div style={{ fontSize: 11, color: '#7f8c8d', marginTop: 10 }}>
-          Shift yang melewati tengah malam dihitung milik hari saat shift dimulai. Jam 02:00 pada
-          shift 23:00–07:00 tercatat sebagai shift hari sebelumnya, sesuai cara operator menghitungnya.
+          A shift that crosses midnight belongs to the day it starts. 02:00 on a 23:00–07:00 shift
+          is counted as the previous day's shift, the way operators count it.
         </div>
 
         <div className="table-responsive" style={{ marginTop: 14 }}>
           <table className="data-table">
-            <thead><tr><th>Name</th><th>Jam</th><th>Hari</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Hours</th><th>Days</th><th>Status</th><th></th></tr></thead>
             <tbody>
               {shifts.map((s) => (
                 <tr key={s.id}>
                   <td>{s.name}</td>
                   <td>{String(s.start_time).slice(0, 5)}–{String(s.end_time).slice(0, 5)}
                     {String(s.start_time) > String(s.end_time) ? (
-                      <span style={{ color: '#e67e22', fontSize: 11 }}> (lewat tengah malam)</span>
+                      <span style={{ color: '#e67e22', fontSize: 11 }}> (crosses midnight)</span>
                     ) : null}
                   </td>
                   <td>{s.weekdays && s.weekdays.length ? s.weekdays.map((d) => HARI[d]).join(' ') : 'every day'}</td>
-                  <td>{s.enabled ? 'aktif' : 'disabled'}</td>
+                  <td>{s.enabled ? 'enabled' : 'disabled'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button onClick={() => { setEditId(s.id); setForm({ ...s, weekdays: s.weekdays || [] }); }}
                       className="btn btn-outline btn-sm" style={{ marginRight: 6 }}>Edit</button>
@@ -154,21 +154,21 @@ function SettingsShift() {
 
       <div className="card">
         <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', marginBottom: 12 }}>
-          Hari khusus
+          Special days
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <label style={{ fontSize: 12 }}>Tanggal
+          <label style={{ fontSize: 12 }}>Date
             <input type="date" value={hariBaru.day}
               onChange={(e) => setHariBaru((f) => ({ ...f, day: e.target.value }))}
               style={{ display: 'block', padding: 6, marginTop: 4 }} />
           </label>
-          <label style={{ fontSize: 12 }}>Jenis
+          <label style={{ fontSize: 12 }}>Kind
             <select value={hariBaru.kind} onChange={(e) => setHariBaru((f) => ({ ...f, kind: e.target.value }))}
               style={{ display: 'block', padding: 6, marginTop: 4, minWidth: 220 }}>
               {JENIS_HARI.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
             </select>
           </label>
-          <label style={{ fontSize: 12, flex: 1, minWidth: 180 }}>Catatan
+          <label style={{ fontSize: 12, flex: 1, minWidth: 180 }}>Note
             <input value={hariBaru.note} onChange={(e) => setHariBaru((f) => ({ ...f, note: e.target.value }))}
               style={{ display: 'block', padding: 6, marginTop: 4, width: '100%' }} />
           </label>

@@ -7,25 +7,25 @@
 // yang tidak menjaga apa pun dan mengira sistemnya aman.
 
 const KATALOG = [
-  { key: 'dashboard.view',  group: 'Monitoring',   label: 'Lihat dashboard' },
-  { key: 'device.view',     group: 'Monitoring',   label: 'Lihat device dan parameter' },
-  { key: 'report.view',     group: 'Monitoring',   label: 'Lihat laporan' },
-  { key: 'report.export',   group: 'Monitoring',   label: 'Ekspor laporan' },
+  { key: 'dashboard.view',  group: 'Monitoring',    label: 'View dashboards' },
+  { key: 'device.view',     group: 'Monitoring',    label: 'View devices and parameters' },
+  { key: 'report.view',     group: 'Monitoring',    label: 'View reports' },
+  { key: 'report.export',   group: 'Monitoring',    label: 'Export reports' },
 
-  { key: 'alarm.view',      group: 'Alarm',        label: 'Lihat alarm' },
-  { key: 'alarm.ack',       group: 'Alarm',        label: 'Acknowledge alarm' },
-  { key: 'alarm.config',    group: 'Alarm',        label: 'Atur aturan alarm' },
+  { key: 'alarm.view',      group: 'Alarm',         label: 'View alarms' },
+  { key: 'alarm.ack',       group: 'Alarm',         label: 'Acknowledge alarms' },
+  { key: 'alarm.config',    group: 'Alarm',         label: 'Configure alarm rules' },
 
-  { key: 'device.manage',   group: 'Konfigurasi',  label: 'Kelola device' },
-  { key: 'mapping.manage',  group: 'Konfigurasi',  label: 'Kelola data mapping' },
-  { key: 'gateway.manage',  group: 'Konfigurasi',  label: 'Kelola gateway' },
-  { key: 'unit.manage',     group: 'Konfigurasi',  label: 'Kelola satuan' },
-  { key: 'asset.manage',    group: 'Konfigurasi',  label: 'Kelola hierarki aset' },
+  { key: 'device.manage',   group: 'Configuration', label: 'Manage devices' },
+  { key: 'mapping.manage',  group: 'Configuration', label: 'Manage data mapping' },
+  { key: 'gateway.manage',  group: 'Configuration', label: 'Manage gateways' },
+  { key: 'unit.manage',     group: 'Configuration', label: 'Manage units' },
+  { key: 'asset.manage',    group: 'Configuration', label: 'Manage asset hierarchy' },
 
-  { key: 'user.manage',     group: 'Sistem',       label: 'Kelola user' },
-  { key: 'role.manage',     group: 'Sistem',       label: 'Kelola peran' },
-  { key: 'smtp.manage',     group: 'Sistem',       label: 'Atur SMTP' },
-  { key: 'audit.view',      group: 'Sistem',       label: 'Lihat audit log' },
+  { key: 'user.manage',     group: 'System',        label: 'Manage users' },
+  { key: 'role.manage',     group: 'System',        label: 'Manage roles' },
+  { key: 'smtp.manage',     group: 'System',        label: 'Configure SMTP' },
+  { key: 'audit.view',      group: 'System',        label: 'View audit log' },
 ];
 
 const KUNCI = new Set(KATALOG.map((c) => c.key));

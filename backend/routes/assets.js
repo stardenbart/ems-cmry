@@ -21,7 +21,7 @@ router.get('/tree', authenticate, async (req, res) => {
 router.post('/nodes', authenticate, authorize('admin', 'maintenance'), async (req, res) => {
   try {
     const { parent_id, name, type, sort_order } = req.body;
-    if (!name) return res.status(400).json({ error: 'name diperlukan' });
+    if (!name) return res.status(400).json({ error: 'name is required' });
     const [row] = await sequelize.query(`
       INSERT INTO asset_nodes (parent_id, name, type, sort_order)
       VALUES (:parent_id, :name, :type, :sort_order) RETURNING *`, {
@@ -39,16 +39,28 @@ router.put('/nodes/:id', authenticate, authorize('admin', 'maintenance'), async 
   try {
     const [before] = await sequelize.query('SELECT * FROM asset_nodes WHERE id = :id',
       { replacements: { id: req.params.id }, type: QueryTypes.SELECT });
-    if (!before) return res.status(404).json({ error: 'Node tidak ditemukan' });
+    if (!before) return res.status(404).json({ error: 'Node not found' });
 
-    // Node tidak boleh jadi induk dirinya sendiri.
-    if (String(req.body.parent_id) === String(req.params.id)) {
-      return res.status(400).json({ error: 'Node tidak bisa menjadi induk dirinya sendiri' });
+    // Node tidak boleh jadi induk dirinya sendiri, maupun induk dari leluhurnya:
+    // menelusuri ke atas dari induk baru tidak boleh bertemu node ini.
+    const pindah = Object.prototype.hasOwnProperty.call(req.body, 'parent_id');
+    if (pindah && req.body.parent_id !== null && req.body.parent_id !== '') {
+      let kini = Number(req.body.parent_id);
+      const dilihat = new Set();
+      while (kini && !dilihat.has(kini)) {
+        if (kini === Number(req.params.id)) {
+          return res.status(400).json({ error: 'A node cannot be moved under itself or one of its children' });
+        }
+        dilihat.add(kini);
+        const [atas] = await sequelize.query('SELECT parent_id FROM asset_nodes WHERE id = :id',
+          { replacements: { id: kini }, type: QueryTypes.SELECT });
+        kini = atas ? atas.parent_id : null;
+      }
     }
 
     const [row] = await sequelize.query(`
       UPDATE asset_nodes SET
-        parent_id  = COALESCE(:parent_id, parent_id),
+        parent_id  = CASE WHEN :pindah THEN :parent_id ELSE parent_id END,
         name       = COALESCE(:name, name),
         type       = COALESCE(:type, type),
         sort_order = COALESCE(:sort_order, sort_order),
@@ -56,7 +68,9 @@ router.put('/nodes/:id', authenticate, authorize('admin', 'maintenance'), async 
       WHERE id = :id RETURNING *`, {
       replacements: {
         id: req.params.id,
-        parent_id: req.body.parent_id ?? null,
+        pindah,
+        // parent_id null berarti dipindah ke tingkat teratas, bukan "tidak berubah".
+        parent_id: pindah && req.body.parent_id !== '' ? req.body.parent_id : null,
         name: req.body.name ?? null,
         type: req.body.type ?? null,
         sort_order: req.body.sort_order ?? null,
@@ -73,17 +87,17 @@ router.delete('/nodes/:id', authenticate, authorize('admin'), async (req, res) =
       'SELECT COUNT(*) AS n FROM asset_nodes WHERE parent_id = :id',
       { replacements: { id: req.params.id }, type: QueryTypes.SELECT });
     if (Number(anak.n) > 0) {
-      return res.status(400).json({ error: 'Node masih punya anak, pindahkan atau hapus dulu' });
+      return res.status(400).json({ error: 'This node still has children; move or delete them first' });
     }
     const [dev] = await sequelize.query(
       'SELECT COUNT(*) AS n FROM devices WHERE asset_node_id = :id',
       { replacements: { id: req.params.id }, type: QueryTypes.SELECT });
     if (Number(dev.n) > 0) {
-      return res.status(400).json({ error: 'Masih ada device di node ini' });
+      return res.status(400).json({ error: 'Devices are still placed in this node; move them first' });
     }
     await sequelize.query('DELETE FROM asset_nodes WHERE id = :id', { replacements: { id: req.params.id } });
     await audit.record(req, { action: 'delete', entity: 'asset_node', entityId: req.params.id });
-    res.json({ message: 'Node dihapus' });
+    res.json({ message: 'Node deleted' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -97,7 +111,7 @@ router.delete('/nodes/:id', authenticate, authorize('admin'), async (req, res) =
 router.get('/:id/overview', authenticate, async (req, res) => {
   try {
     const nodeId = req.params.id === 'root' ? await tree.rootNode() : parseInt(req.params.id);
-    if (!nodeId) return res.status(404).json({ error: 'Node tidak ditemukan' });
+    if (!nodeId) return res.status(404).json({ error: 'Node not found' });
 
     const range = req.query.range || 'today';
     const { devices, mode, nodes } = await tree.devicesForRollup(nodeId);

@@ -42,7 +42,7 @@ function SettingsGateway() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Yakin hapus gateway ini?')) return;
+    if (!window.confirm('Delete this gateway?')) return;
     try {
       await api.delete(`/settings/gateways/${id}`);
       fetchData();
@@ -68,14 +68,22 @@ function SettingsGateway() {
               <select value={form.protocol} onChange={(e) => setForm({ ...form, protocol: e.target.value })}>
                 <option value="modbus-rtu">Modbus RTU</option>
                 <option value="modbus-tcp">Modbus TCP</option>
+                <option value="simulated">Simulated (no hardware yet)</option>
               </select>
+              {form.protocol === 'simulated' ? (
+                <div style={{ fontSize: 11, color: '#7f8c8d', marginTop: 6 }}>
+                  Devices on this gateway get generated values from their Data Mapping, and are logged,
+                  charted and alarmed like real ones. Once the RS485 / MOXA link is in place, switch the
+                  protocol to Modbus RTU or TCP — the same devices start reading real data, history is kept.
+                </div>
+              ) : null}
             </div>
             <div className="form-group">
-              <label>{form.protocol === 'modbus-tcp' ? 'IP:PORT' : 'COM Port'}</label>
+              <label>{form.protocol === 'modbus-tcp' ? 'IP:PORT' : form.protocol === 'simulated' ? 'Note' : 'COM Port'}</label>
               <input
                 value={form.port_or_ip}
                 onChange={(e) => setForm({ ...form, port_or_ip: e.target.value })}
-                placeholder={form.protocol === 'modbus-tcp' ? '192.168.1.100:502' : 'COM1'}
+                placeholder={form.protocol === 'modbus-tcp' ? '192.168.1.100:502' : form.protocol === 'simulated' ? 'e.g. waiting for MOXA' : 'COM1'}
                 required
               />
             </div>
@@ -112,7 +120,7 @@ function SettingsGateway() {
               {gateways.map((gw) => (
                 <tr key={gw.id}>
                   <td>{gw.name}</td>
-                  <td>{gw.protocol}</td>
+                  <td>{gw.protocol === 'simulated' ? <span style={{ color: '#e67e22', fontWeight: 600 }}>simulated</span> : gw.protocol}</td>
                   <td>{gw.port_or_ip}</td>
                   <td>{gw.baudrate || '-'}</td>
                   <td>{gw.parity || '-'}</td>

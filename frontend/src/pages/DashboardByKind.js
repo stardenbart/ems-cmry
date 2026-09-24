@@ -4,7 +4,7 @@ import {
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import api from '../api/axios';
-import { formatNilai } from '../components/Common/MetricPanel';
+import { formatNilai, tampilSatuan } from '../components/Common/MetricPanel';
 
 // Dashboard per jenis besaran.
 //
@@ -19,10 +19,10 @@ const RANGE = [
 ];
 
 const LABEL_KIND = {
-  energy: 'Energi', power: 'Daya Aktif', reactive_power: 'Daya Reaktif',
-  apparent_power: 'Daya Semu', current: 'Arus', voltage: 'Tegangan',
-  frequency: 'Frekuensi', power_factor: 'Power Factor', thd: 'THD',
-  temperature: 'Suhu', pressure: 'Tekanan', flow: 'Aliran', other: 'Lainnya',
+  energy: 'Energy', power: 'Active Power', reactive_power: 'Reactive Power',
+  apparent_power: 'Apparent Power', current: 'Current', voltage: 'Voltage',
+  frequency: 'Frequency', power_factor: 'Power Factor', thd: 'THD',
+  temperature: 'Temperature', pressure: 'Pressure', flow: 'Flow', other: 'Other',
 };
 
 const WARNA = ['#1B4F72', '#e74c3c', '#27ae60', '#e67e22', '#8e44ad', '#16a085', '#2c3e50', '#d35400'];
@@ -88,11 +88,11 @@ function DashboardByKind() {
     [seri]);
 
   const agg = kindAktif && kindAktif.items[0] ? kindAktif.items[0].agg : 'gauge';
-  const satuan = kindAktif ? kindAktif.units.join(', ') : '';
+  const satuan = kindAktif ? kindAktif.units.map(tampilSatuan).join(', ') : '';
 
   return (
     <div>
-      <h2 className="page-title">Dashboard by Quantity</h2>
+      <h2 className="page-title">Quantity Dashboard</h2>
 
       {/* Tab jenis besaran, tumbuh sendiri dari data */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -117,7 +117,7 @@ function DashboardByKind() {
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
           <strong style={{ fontSize: 14 }}>{LABEL_KIND[aktif] || aktif}</strong>
           <span style={{ fontSize: 12, color: '#7f8c8d' }}>
-            satuan {satuan} · {agg === 'counter' ? 'accumulated per period' : 'average per period'}
+            unit {satuan} · {agg === 'counter' ? 'accumulated per period' : 'average per period'}
           </span>
           <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
             {RANGE.map((r) => (
@@ -136,7 +136,7 @@ function DashboardByKind() {
           <div style={{ padding: 30, textAlign: 'center', color: '#95a5a6' }}>{status}</div>
         ) : kunciSeri.length === 0 ? (
           <div style={{ padding: 30, textAlign: 'center', color: '#95a5a6' }}>
-            Belum ada data pada rentang ini.
+            No data in this range yet.
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={320}>
@@ -172,12 +172,12 @@ function DashboardByKind() {
       {kindAktif ? (
         <div className="card">
           <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', marginBottom: 12 }}>
-            Parameter {LABEL_KIND[aktif] || aktif} ({kindAktif.items.length})
+            {LABEL_KIND[aktif] || aktif} parameters ({kindAktif.items.length})
           </div>
           <div className="table-responsive">
             <table className="data-table">
               <thead>
-                <tr><th>Device</th><th>Parameter</th><th>Unit</th><th>Aggregation</th><th style={{ textAlign: 'right' }}>Total periode</th></tr>
+                <tr><th>Device</th><th>Parameter</th><th>Unit</th><th>Aggregation</th><th style={{ textAlign: 'right' }}>Period value</th></tr>
               </thead>
               <tbody>
                 {kindAktif.items.map((it) => {
@@ -192,8 +192,8 @@ function DashboardByKind() {
                     <tr key={`${it.deviceId}-${it.parameter}`}>
                       <td>{it.deviceName}</td>
                       <td>{it.parameter}</td>
-                      <td>{it.unit === '-' ? '' : it.unit}</td>
-                      <td style={{ color: '#7f8c8d' }}>{it.agg === 'counter' ? 'jumlah' : 'rata-rata'}</td>
+                      <td>{tampilSatuan(it.unit)}</td>
+                      <td style={{ color: '#7f8c8d' }}>{it.agg === 'counter' ? 'sum' : 'average'}</td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>
                         {nilai === null ? '—' : formatNilai(nilai, it.precision)}
                       </td>
@@ -205,7 +205,7 @@ function DashboardByKind() {
           </div>
           {kindAktif.items.length > 8 ? (
             <div style={{ fontSize: 11, color: '#7f8c8d', marginTop: 8 }}>
-              Grafik menampilkan 8 parameter pertama agar tetap terbaca; tabel memuat seluruhnya.
+              The chart shows the first 8 parameters to stay readable; the table lists all of them.
             </div>
           ) : null}
         </div>

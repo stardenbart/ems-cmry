@@ -5,6 +5,7 @@ const { checkAlarms } = require('./alarmChecker');
 const { markRead } = require('./watchdog');
 const { buildBlocks, dueAtCycle } = require('./modbusBlocks');
 const { terapkan } = require('./decode');
+const { simulateDevice } = require('./simulator');
 
 const clients = {};
 let devices = [];
@@ -159,6 +160,15 @@ const BLOCK_READ = process.env.MODBUS_BLOCK_READ !== '0';
 const lastValues = {};
 let cycle = 0;
 
+// Daftar parameter milik device, sudah diurai dari JSONB.
+function paramsOf(device) {
+  const deviceType = deviceTypes[device.device_type_id];
+  if (!deviceType || !deviceType.params) return null;
+  return typeof deviceType.params === 'string'
+    ? JSON.parse(deviceType.params)
+    : deviceType.params;
+}
+
 async function readDevice(client, device, opts = {}) {
   const deviceType = deviceTypes[device.device_type_id];
   if (!deviceType || !deviceType.params) return null;
@@ -167,9 +177,7 @@ async function readDevice(client, device, opts = {}) {
   const result = {};
   let failed = 0;
 
-  const params = typeof deviceType.params === 'string'
-    ? JSON.parse(deviceType.params)
-    : deviceType.params;
+  const params = paramsOf(device);
 
   const readOne = async (param) => {
     try {
@@ -222,9 +230,29 @@ async function readDevice(client, device, opts = {}) {
 
 // Baca satu device dan sebarkan hasilnya. Mengembalikan data kalau berhasil,
 // null kalau gateway tidak bisa dibuka atau ada register yang gagal dibaca.
+// Gateway simulasi: tidak ada perangkat di ujung sana, nilainya dibangkitkan
+// dari metadata parameter. Sengaja ditaruh di sini, bukan di lapisan atasnya,
+// supaya seluruh jalur hilir (broadcast, dataLogger, alarm, watchdog) identik
+// dengan device sungguhan — mengganti protocol gateway sudah cukup untuk
+// berpindah ke data asli.
+function isSimulated(gateway) {
+  return gateway && gateway.protocol === 'simulated';
+}
+
 async function pollDevice(device) {
   const gateway = gateways[device.data_gateway_id];
   if (!gateway) return null;
+
+  if (isSimulated(gateway)) {
+    const params = paramsOf(device);
+    if (!params) return null;
+    const data = simulateDevice(device.id, params);
+    lastValues[device.id] = data;
+    broadcastData(device.id, { ...data, deviceName: device.name, deviceId: device.id });
+    checkAlarms(device.id, data);
+    markRead(device.id);
+    return data;
+  }
 
   const client = await connectGateway(gateway);
   if (!client) return null;
@@ -301,6 +329,7 @@ async function startModbusReader() {
   for (const device of devices) {
     const gateway = gateways[device.data_gateway_id];
     if (!gateway) continue;
+    if (isSimulated(gateway)) { anyConnected = true; break; }
     const client = await connectGateway(gateway);
     if (client) { anyConnected = true; break; }
   }
@@ -438,6 +467,9 @@ function decodeAll(words) {
 async function probeRegister({ gatewayId, slaveId, address, length }) {
   const gateway = gateways[gatewayId];
   if (!gateway) throw new Error(`Gateway ${gatewayId} tidak ditemukan`);
+  if (isSimulated(gateway)) {
+    throw new Error(`Gateway ${gateway.name} bersifat simulasi - tidak ada register untuk dibaca`);
+  }
 
   return withGateway(gatewayId, async () => {
     const client = await connectGateway(gateway);

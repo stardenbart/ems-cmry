@@ -89,7 +89,7 @@ function SettingsRoles() {
 
   return (
     <div>
-      <h2 className="page-title">Roles and Access</h2>
+      <h2 className="page-title">Roles & Permissions</h2>
 
       {pesan ? (
         <div className="card" style={{ padding: 12, marginBottom: 12, color: '#c0392b' }}>{pesan}</div>
@@ -98,24 +98,24 @@ function SettingsRoles() {
       {/* Penugasan peran ke user */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', marginBottom: 12 }}>
-          Penugasan peran
+          Role assignments
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <label style={{ fontSize: 12 }}>User
             <select value={userAktif} onChange={(e) => setUserAktif(e.target.value)}
               style={{ display: 'block', padding: 6, marginTop: 4, minWidth: 180 }}>
-              <option value="">— pilih user —</option>
+              <option value="">— select user —</option>
               {users.map((u) => <option key={u.id} value={u.id}>{u.username} ({u.name})</option>)}
             </select>
           </label>
-          <label style={{ fontSize: 12 }}>Peran
+          <label style={{ fontSize: 12 }}>Role
             <select value={tugasBaru.role_id} onChange={(e) => setTugasBaru((f) => ({ ...f, role_id: e.target.value }))}
               style={{ display: 'block', padding: 6, marginTop: 4, minWidth: 160 }}>
-              <option value="">— pilih peran —</option>
+              <option value="">— select role —</option>
               {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </label>
-          <label style={{ fontSize: 12 }}>Berlaku di
+          <label style={{ fontSize: 12 }}>Applies to
             <select value={tugasBaru.asset_node_id}
               onChange={(e) => setTugasBaru((f) => ({ ...f, asset_node_id: e.target.value }))}
               style={{ display: 'block', padding: 6, marginTop: 4, minWidth: 200 }}>
@@ -137,7 +137,7 @@ function SettingsRoles() {
                   <tr key={p.id}>
                     <td>{p.role_name}</td>
                     <td>{p.node_name || 'Whole plant'}
-                      <span style={{ color: '#7f8c8d', fontSize: 11 }}> (termasuk seluruh cabang di bawahnya)</span>
+                      <span style={{ color: '#7f8c8d', fontSize: 11 }}> (including every branch below it)</span>
                     </td>
                     <td>
                       <button onClick={() => hapusTugas(p.id)}
@@ -160,11 +160,11 @@ function SettingsRoles() {
           {editId ? `Edit role #${editId}` : 'New role'}
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-          <label style={{ fontSize: 12 }}>Nama
+          <label style={{ fontSize: 12 }}>Name
             <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               style={{ display: 'block', padding: 6, marginTop: 4, minWidth: 180 }} />
           </label>
-          <label style={{ fontSize: 12, flex: 1, minWidth: 240 }}>Keterangan
+          <label style={{ fontSize: 12, flex: 1, minWidth: 240 }}>Description
             <input value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               style={{ display: 'block', padding: 6, marginTop: 4, width: '100%' }} />
           </label>
@@ -196,7 +196,7 @@ function SettingsRoles() {
         </div>
         {editId ? (
           <div style={{ fontSize: 11, color: '#e67e22', marginTop: 8 }}>
-            Mengubah kapabilitas akan memutus sesi seluruh pemegang peran ini; mereka perlu login ulang.
+            Changing capabilities signs out every holder of this role; they will need to log in again.
           </div>
         ) : null}
       </div>
