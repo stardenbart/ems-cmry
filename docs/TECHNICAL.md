@@ -113,6 +113,8 @@ urut nama, dicatat di `schema_migrations`, masing-masing dalam satu transaksi.
 | 010 | `roles`, `role_capabilities`, `user_roles`, `token_version` |
 | 011 | JUMO LOGOSCREEN 601 UHT 5000: node, tipe, gateway simulasi, device |
 | 012 | deskripsi peran bawaan dalam bahasa Inggris |
+| 013 | arsipkan 673 baris PF Total mustahil (-32,768 dan 50,022), PF Total diurutkan sebelum PF per fasa |
+| 014 | 20 baris era alamat 3077 diberi nama PF A (koreksi jendela waktu 013) |
 
 **Selalu backup sebelum migrasi.** `node backup.js` memakai kredensial dari
 `.env` tanpa mencetaknya.
@@ -237,6 +239,19 @@ Empat lapis, semuanya lahir dari kejadian nyata.
    berturut-turut → device dilewati 30 detik, berlipat sampai 5 menit. Tanpa ini
    satu device mati di bus RS485 memperlambat semua device lain di bus itu.
    **Read** manual dan **Test** di Data Gateway tetap menembus.
+
+### Overview: satu wakil per device per besaran
+
+Overview memakai kartu **featured pertama (menurut `order`) tiap besaran** dari
+setiap device, bukan seluruh parameter featured. Featured juga dipakai kartu
+KPI, sehingga satu PM2200 punya PF A, B, C, dan Total sekaligus — merata-ratakan
+keempatnya pernah menghasilkan Power Factor 1,60 (24 Sep 2026; sebagian karena
+riwayat PF Total tercemar, lihat migrasi 013/014). Setiap kartu menyebut device
+dan parameter wakilnya.
+
+> Jebakan waktu: `timestamp AT TIME ZONE 'Asia/Jakarta'` menghasilkan jam dinding
+> WIB tanpa zona, dan driver Node mencetaknya dengan akhiran `Z`. Angka itu
+> **bukan UTC**. Migrasi 013 meleset 7 jam karena ini.
 
 ### Aturan koherensi harus konservatif
 
@@ -371,6 +386,33 @@ membangun ke folder sementara dan menukarnya hanya kalau berhasil.
 Get-Service emsbackend.exe
 Restart-Service emsbackend.exe -Force
 Get-Content C:\Apps\ems-cmry\backend\daemon\emsbackend.out.log -Tail 40
+```
+
+### Pulih sendiri setelah server mati
+
+`emsbackend.exe` bergantung pada `postgresql-x64-17` (tidak start sebelum database
+siap), dan keduanya disetel **restart otomatis saat gagal** (10 s, 30 s, 60 s;
+hitungan di-reset tiap 24 jam). Start type keduanya Automatic. Yang tidak bisa
+diatur dari software: opsi BIOS *Restore on AC power loss* supaya PC menyala
+sendiri setelah listrik kembali.
+
+### Aplikasi desktop
+
+EMS dipasang lewat **Install this site as an app** di Edge/Chrome (manifest di
+`frontend/public/manifest.json`, ikon `ems-icon-*.png`). Peluncur exe di
+`desktop/` **tidak disajikan**: Smart App Control Windows 11 memblokir exe tanpa
+tanda tangan kode tanpa pilihan "Run anyway". Layak dibagikan lagi hanya setelah
+ditandatangani sertifikat code signing perusahaan.
+
+### User Guide
+
+Halaman `/guide` (`frontend/src/pages/UserGuide.js`) memakai screenshot di
+`frontend/public/guide/`. Ambil ulang setiap tampilan berubah:
+
+```
+set EMS_GUIDE_USER=<admin>
+set EMS_GUIDE_PASSWORD=<password>
+python tools/guide_screenshots.py frontend/public/guide
 ```
 
 ### Checklist saat angka terlihat aneh

@@ -25,6 +25,7 @@ import SettingsRoles from './pages/SettingsRoles';
 import SettingsAssets from './pages/SettingsAssets';
 import SettingsShift from './pages/SettingsShift';
 import SettingsUnits from './pages/SettingsUnits';
+import UserGuide from './pages/UserGuide';
 import SettingsUsers from './pages/SettingsUsers';
 import SettingsSMTP from './pages/SettingsSMTP';
 import ChangePassword from './pages/ChangePassword';
@@ -58,6 +59,7 @@ function AppRoutes() {
       <Route path="/settings/assets" element={<ProtectedRoute><SettingsAssets /></ProtectedRoute>} />
       <Route path="/settings/shift" element={<ProtectedRoute><SettingsShift /></ProtectedRoute>} />
       <Route path="/settings/units" element={<ProtectedRoute><SettingsUnits /></ProtectedRoute>} />
+      <Route path="/guide" element={<ProtectedRoute><UserGuide /></ProtectedRoute>} />
       <Route path="/realtime/device" element={<ProtectedRoute><RealtimeDevice /></ProtectedRoute>} />
       <Route path="/realtime/sld" element={<ProtectedRoute><RealtimeDevice /></ProtectedRoute>} />
 

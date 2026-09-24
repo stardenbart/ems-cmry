@@ -359,3 +359,8 @@
 @media (max-width: 900px) {
   .rt-chart-grid { grid-template-columns: 1fr; }
 }
+
+/* User Guide: daftar isi disembunyikan di layar sempit */
+@media (max-width: 900px) {
+  .guide-toc { display: none; }
+}
