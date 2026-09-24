@@ -177,7 +177,12 @@ async function readDevice(client, device, opts = {}) {
   };
 
   const useBlocks = opts.blockRead === undefined ? BLOCK_READ : opts.blockRead;
-  const allBlocks = opts.allBlocks === true;
+
+  // Siklus pertama setelah start membaca SELURUH blok, termasuk yang berkelas
+  // lambat. Tanpa ini snapshot awal tidak lengkap sampai ~30 detik, dan kartu
+  // energi di UI menampilkan kosong padahal sistemnya sehat.
+  const belumAdaCache = !lastValues[device.id];
+  const allBlocks = opts.allBlocks === true || belumAdaCache;
 
   if (useBlocks) {
     const blocks = buildBlocks(params);
