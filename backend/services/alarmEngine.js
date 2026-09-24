@@ -18,6 +18,7 @@ let timer = null;
 let rules = [];
 let templates = {};
 let lastLoad = 0;
+let perluMuatUlang = true;   // permintaan muat ulang, terpisah dari penanda waktu
 const state = {};        // per rule id: { melanggarSejak, menyala }
 const eventAktif = {};   // per rule id: id baris alarm_events yang masih menyala
 
@@ -34,6 +35,7 @@ async function muatAturan() {
   templates = {};
   t.forEach((x) => { templates[x.name] = x; });
   lastLoad = Date.now();
+  perluMuatUlang = false;
 }
 
 // Device mana yang dipantau aturan ini. Aturan bertingkat node memantau seluruh
@@ -105,7 +107,7 @@ async function padamkan(rule) {
 
 async function tick() {
   try {
-    if (Date.now() - lastLoad > RELOAD_MS) await muatAturan();
+    if (perluMuatUlang || Date.now() - lastLoad > RELOAD_MS) await muatAturan();
     if (rules.length === 0) return;
 
     const snapshot = getLatestData();
@@ -148,8 +150,14 @@ function stopAlarmEngine() {
 }
 
 // Dipanggil route setelah aturan berubah, supaya tidak perlu menunggu reload berkala.
+//
+// Memakai penanda tersendiri, bukan menimpa lastLoad. Versi sebelumnya menyetel
+// lastLoad = 0, dan itu bisa dibatalkan diam-diam: startAlarmEngine bersifat async,
+// jadi muatAturan() di dalamnya dapat selesai SETELAH sebuah request memanggil
+// fungsi ini, lalu menimpa lastLoad kembali ke waktu sekarang. Permintaan muat
+// ulangnya hilang dan aturan baru baru terdeteksi 60 detik kemudian.
 function reloadRules() {
-  lastLoad = 0;
+  perluMuatUlang = true;
 }
 
 module.exports = { startAlarmEngine, stopAlarmEngine, reloadRules, tick };
