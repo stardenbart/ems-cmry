@@ -13,10 +13,18 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Interceptor: handle 401 (token expired)
+// Interceptor: 401 = sesi habis -> login. 428 = password bawaan belum diganti ->
+// halaman ganti password. Dulu 428 tidak ditangani sama sekali, sehingga guard
+// password bawaan membuat seluruh halaman kosong tanpa penjelasan.
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.response && error.response.status === 428) {
+      if (!window.location.pathname.startsWith('/change-password')) {
+        window.location.href = '/change-password?required=1';
+      }
+      return Promise.reject(error);
+    }
     if (error.response && error.response.status === 401) {
       localStorage.removeItem('ems_token');
       localStorage.removeItem('ems_user');

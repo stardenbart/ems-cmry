@@ -6,6 +6,7 @@ const { markRead } = require('./watchdog');
 const { buildBlocks, dueAtCycle } = require('./modbusBlocks');
 const { terapkan } = require('./decode');
 const { simulateDevice } = require('./simulator');
+const breaker = require('./circuitBreaker').create();
 
 const clients = {};
 let devices = [];
@@ -308,8 +309,26 @@ async function pollAllDevices() {
   // di tengah siklus dan menabrak bus yang sama.
   // ponytail: paralel antar gateway ditunda sampai ada gateway kedua untuk diuji.
   for (const device of devices) {
-    await withGateway(device.data_gateway_id, () => pollDevice(device));
+    // Device yang berulang kali tidak menjawab dilewati sementara, supaya
+    // timeout-nya tidak memperlambat device lain di bus yang sama.
+    if (!breaker.allows(device.id, Date.now())) continue;
+    const hasil = await withGateway(device.data_gateway_id, () => pollDevice(device));
+    catatBreaker(device, hasil !== null && hasil !== undefined);
   }
+}
+
+function catatBreaker(device, ok) {
+  const ubah = breaker.record(device.id, ok, Date.now());
+  if (ubah === 'opened') {
+    const s = breaker.status(Date.now())[device.id];
+    console.warn(`[Modbus] ${device.name}: tidak menjawab ${s.consecutiveFailures}x berturut-turut, dilewati ${s.retryInSeconds} detik`);
+  } else if (ubah === 'closed') {
+    console.log(`[Modbus] ${device.name}: menjawab lagi, kembali dipoll normal`);
+  }
+}
+
+function deviceStatus() {
+  return breaker.status(Date.now());
 }
 
 async function startModbusReader() {
@@ -434,7 +453,73 @@ async function readDeviceNow(deviceId) {
   const device = devices.find((d) => String(d.id) === String(deviceId));
   if (!device) throw new Error(`Device ${deviceId} tidak ditemukan`);
 
-  return withGateway(device.data_gateway_id, () => pollDevice(device));
+  // Pembacaan manual dari UI menembus breaker: itu justru cara user memeriksa
+  // apakah device yang dilewati sudah menjawab lagi.
+  const hasil = await withGateway(device.data_gateway_id, () => pollDevice(device));
+  catatBreaker(device, hasil !== null && hasil !== undefined);
+  return hasil;
+}
+
+// Uji koneksi gateway: buka port/soket, lalu kirim SATU permintaan baca ke
+// setiap device di gateway itu. Balasan exception Modbus tetap dihitung
+// "menjawab" — artinya kabel, baud, parity, dan slave address sudah benar,
+// hanya alamat registernya yang ditolak. Timeout berarti tidak ada balasan.
+async function testGateway(gatewayId) {
+  if (reloadPending) { reloadPending = false; await loadConfig(); }
+  const gateway = gateways[gatewayId];
+  if (!gateway) throw new Error(`Gateway ${gatewayId} not found`);
+  const anggota = devices.filter((d) => String(d.data_gateway_id) === String(gatewayId));
+
+  if (isSimulated(gateway)) {
+    return {
+      gateway: gateway.name, protocol: gateway.protocol, opened: true,
+      note: 'Simulated gateway: values are generated, no hardware is contacted.',
+      devices: anggota.map((d) => ({ id: d.id, name: d.name, slaveId: d.address, replied: true, detail: 'simulated' })),
+    };
+  }
+
+  return withGateway(gatewayId, async () => {
+    const mulai = Date.now();
+    const client = await connectGateway(gateway);
+    if (!client) {
+      return {
+        gateway: gateway.name, protocol: gateway.protocol, opened: false,
+        note: `Could not open ${gateway.port_or_ip}. Check the COM port / IP:port and that no other program holds it.`,
+        devices: [],
+      };
+    }
+    const openMs = Date.now() - mulai;
+
+    const hasil = [];
+    for (const d of anggota) {
+      const params = paramsOf(d) || [];
+      const p = params[0];
+      const alamat = p ? Number(p.address) : 0;
+      const t0 = Date.now();
+      try {
+        client.setID(d.address);
+        await client.readHoldingRegisters(alamat, p ? (Number(p.length) || 2) : 1);
+        hasil.push({ id: d.id, name: d.name, slaveId: d.address, replied: true,
+          ms: Date.now() - t0, detail: `register ${alamat} read OK` });
+      } catch (err) {
+        const exception = err && (err.modbusCode !== undefined || /exception/i.test(err.message || ''));
+        hasil.push({ id: d.id, name: d.name, slaveId: d.address, replied: !!exception,
+          ms: Date.now() - t0,
+          detail: exception
+            ? `device replied with a Modbus exception for register ${alamat} — link is fine, check the address`
+            : `no reply (${err.message}) — check wiring, baud, parity and slave address` });
+        // Timeout meninggalkan balasan telat di buffer; buka ulang sebelum device berikutnya.
+        if (!exception) {
+          try { client.close(); } catch (e) {}
+          delete clients[gateway.id];
+          break;
+        }
+      }
+      await sleep(50);
+    }
+    return { gateway: gateway.name, protocol: gateway.protocol, opened: true, openMs, devices: hasil,
+      breaker: deviceStatus() };
+  });
 }
 
 // ── Register Explorer ───────────────────────────────────────────────────────
@@ -529,4 +614,6 @@ module.exports = {
   probeRegister,
   decodeAll,
   compareReadStrategies,
+  testGateway,
+  deviceStatus,
 };

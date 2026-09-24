@@ -13,11 +13,18 @@ function authenticate(req, res, next) {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded; // { id, username, level }
 
-    // Akun yang masih memakai password bawaan hanya boleh mengakses endpoint
-    // auth, sampai passwordnya diganti. Tanpa ini, admin/admin tetap terbuka.
-    if (decoded.mcp === true && !req.path.startsWith('/change-password')) {
+    // Akun yang masih memakai password bawaan hanya boleh mengakses /auth/me dan
+    // /auth/change-password sampai passwordnya diganti. Tanpa ini admin/admin
+    // tetap terbuka.
+    //
+    // /auth/me WAJIB lolos: frontend memanggilnya saat memuat halaman, dan
+    // ketika ikut ditolak (25 Sep 2026) seluruh user terlempar ke login tanpa
+    // pernah diarahkan ke halaman ganti password.
+    const bolehLewat = req.baseUrl === '/api/auth'
+      && (req.path === '/me' || req.path === '/change-password');
+    if (decoded.mcp === true && !bolehLewat) {
       return res.status(428).json({
-        error: 'Password bawaan harus diganti sebelum memakai sistem',
+        error: 'The default password must be changed before using the system',
         must_change_password: true,
       });
     }

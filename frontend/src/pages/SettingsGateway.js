@@ -8,6 +8,18 @@ function SettingsGateway() {
   });
   const [editId, setEditId] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [testing, setTesting] = useState(null);   // id gateway yang sedang diuji
+  const [testResult, setTestResult] = useState(null);
+
+  const handleTest = async (gw) => {
+    setTesting(gw.id); setTestResult(null);
+    try {
+      const res = await api.post(`/settings/gateways/${gw.id}/test`);
+      setTestResult(res.data);
+    } catch (err) {
+      setTestResult({ gateway: gw.name, opened: false, note: err.response?.data?.error || 'Test failed', devices: [] });
+    } finally { setTesting(null); }
+  };
 
   const fetchData = async () => {
     const res = await api.get('/settings/gateways');
@@ -125,14 +137,48 @@ function SettingsGateway() {
                   <td>{gw.baudrate || '-'}</td>
                   <td>{gw.parity || '-'}</td>
                   <td>
-                    <button className="btn btn-primary" style={{ marginRight: 8, padding: '4px 12px', fontSize: 12 }} onClick={() => handleEdit(gw)}>Edit</button>
-                    <button className="btn btn-danger" style={{ padding: '4px 12px', fontSize: 12 }} onClick={() => handleDelete(gw.id)}>Delete</button>
+                    <button className="btn btn-outline btn-sm" style={{ marginRight: 8 }} disabled={testing !== null}
+                      onClick={() => handleTest(gw)}>{testing === gw.id ? 'Testing…' : 'Test'}</button>
+                    <button className="btn btn-outline btn-sm" style={{ marginRight: 8 }} onClick={() => handleEdit(gw)}>Edit</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => handleDelete(gw.id)}>Delete</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+
+        {testResult ? (
+          <div className="card" style={{ marginTop: 16, borderLeft: `4px solid ${testResult.opened ? '#27ae60' : '#c0392b'}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+              <strong>Connection test — {testResult.gateway}</strong>
+              <button className="btn btn-outline btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setTestResult(null)}>Close</button>
+            </div>
+            <div style={{ fontSize: 13, marginBottom: 8, color: testResult.opened ? '#1e8449' : '#c0392b' }}>
+              {testResult.opened
+                ? `Port opened${testResult.openMs !== undefined ? ` in ${testResult.openMs} ms` : ''}.`
+                : 'Port could not be opened.'}
+              {testResult.note ? <span style={{ color: '#555' }}> {testResult.note}</span> : null}
+            </div>
+            {testResult.devices && testResult.devices.length > 0 ? (
+              <table className="data-table" style={{ fontSize: 12 }}>
+                <thead><tr><th>Device</th><th>Slave ID</th><th>Result</th><th style={{ textAlign: 'right' }}>Time</th></tr></thead>
+                <tbody>
+                  {testResult.devices.map((d) => (
+                    <tr key={d.id}>
+                      <td>{d.name}</td>
+                      <td>{d.slaveId}</td>
+                      <td style={{ color: d.replied ? '#1e8449' : '#c0392b' }}>{d.replied ? 'Replied' : 'No reply'} — {d.detail}</td>
+                      <td style={{ textAlign: 'right' }}>{d.ms !== undefined ? `${d.ms} ms` : ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : testResult.opened ? (
+              <div style={{ fontSize: 12, color: '#7f8c8d' }}>No devices are assigned to this gateway yet.</div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );

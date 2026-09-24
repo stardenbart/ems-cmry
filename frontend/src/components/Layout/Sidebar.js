@@ -83,6 +83,7 @@ function Sidebar({ isOpen, onClose }) {
           { label: 'Data Mapping', path: '/settings/data-mapping' },
         ] : []),
         { label: 'Asset Hierarchy', path: '/settings/assets' },
+        { label: 'Units', path: '/settings/units' },
         { label: 'Grouping (legacy)', path: '/settings/grouping' },
         { label: 'Energy Conversion', path: '/settings/energy-conversion' },
         { label: 'Alarm', path: '/settings/alarm' },

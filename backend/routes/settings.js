@@ -2,7 +2,7 @@ const router = require('express').Router();
 const { DataGateway, DeviceType, Group, User, EnergyConversion, SmtpSetting, Unit } = require('../models');
 const { authenticate, authorize } = require('../middleware/auth');
 const { sendTestEmail } = require('../services/emailService');
-const { requestReload, probeRegister } = require('../services/modbusReader');
+const { requestReload, probeRegister, testGateway } = require('../services/modbusReader');
 const { invalidateUnits } = require('../services/aggregation');
 const audit = require('../services/audit');
 const template = require('../services/deviceTemplate');
@@ -41,6 +41,13 @@ router.put('/gateways/:id', authenticate, authorize('admin', 'maintenance'), asy
       action: 'update', entity: 'gateway', entityId: gw.id, before, after: gw.toJSON(),
     });
     res.json(gw);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// POST /api/settings/gateways/:id/test — buka koneksi dan sapa setiap device.
+router.post('/gateways/:id/test', authenticate, authorize('admin', 'maintenance'), async (req, res) => {
+  try {
+    res.json(await testGateway(req.params.id));
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
@@ -154,7 +161,12 @@ router.post('/users', authenticate, authorize('admin'), async (req, res) => {
     if (!name || !username || !password) {
       return res.status(400).json({ error: 'name, username, dan password diperlukan' });
     }
-    const user = await User.create({ name, username, password, level: level || 'viewer' });
+    // Password yang diketik admin hanya sekali pakai: pemilik akun wajib
+    // menggantinya saat login pertama, supaya admin tidak memegang password
+    // orang lain.
+    const user = await User.create({
+      name, username, password, level: level || 'viewer', must_change_password: true,
+    });
     res.status(201).json({ id: user.id, name: user.name, username: user.username, level: user.level });
   } catch (err) {
     if (err.name === 'SequelizeUniqueConstraintError') {
@@ -169,7 +181,11 @@ router.put('/users/:id', authenticate, authorize('admin'), async (req, res) => {
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ error: 'User tidak ditemukan' });
     const updateData = { name: req.body.name, username: req.body.username, level: req.body.level };
-    if (req.body.password) updateData.password = req.body.password;
+    // Reset password oleh admin berlaku sama seperti akun baru.
+    if (req.body.password) {
+      updateData.password = req.body.password;
+      updateData.must_change_password = true;
+    }
     await user.update(updateData);
     res.json({ id: user.id, name: user.name, username: user.username, level: user.level });
   } catch (err) { res.status(400).json({ error: err.message }); }
@@ -263,7 +279,7 @@ router.post('/units', authenticate, authorize('admin', 'maintenance'), async (re
   try {
     const { symbol, name, quantity, base_symbol, factor, offset_value } = req.body;
     if (!symbol || !name || !quantity || !base_symbol) {
-      return res.status(400).json({ error: 'symbol, name, quantity, dan base_symbol diperlukan' });
+      return res.status(400).json({ error: 'symbol, name, quantity and base_symbol are required' });
     }
     const u = await Unit.create({
       symbol, name, quantity, base_symbol,
@@ -279,7 +295,7 @@ router.post('/units', authenticate, authorize('admin', 'maintenance'), async (re
 router.put('/units/:id', authenticate, authorize('admin', 'maintenance'), async (req, res) => {
   try {
     const u = await Unit.findByPk(req.params.id);
-    if (!u) return res.status(404).json({ error: 'Satuan tidak ditemukan' });
+    if (!u) return res.status(404).json({ error: 'Unit not found' });
     const { is_system, ...rest } = req.body; // is_system tidak bisa diubah lewat API
     const before = u.toJSON();
     await u.update(rest);
@@ -294,9 +310,9 @@ router.put('/units/:id', authenticate, authorize('admin', 'maintenance'), async 
 router.delete('/units/:id', authenticate, authorize('admin'), async (req, res) => {
   try {
     const u = await Unit.findByPk(req.params.id);
-    if (!u) return res.status(404).json({ error: 'Satuan tidak ditemukan' });
+    if (!u) return res.status(404).json({ error: 'Unit not found' });
     if (u.is_system) {
-      return res.status(400).json({ error: 'Satuan bawaan tidak bisa dihapus, dipakai sebagai dasar konversi' });
+      return res.status(400).json({ error: 'Built-in units cannot be deleted; they are the base for conversions' });
     }
     await u.destroy();
     invalidateUnits();
