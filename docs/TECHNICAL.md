@@ -159,13 +159,25 @@ negatif saat reset.
 
 Helper ini dipakai bersama oleh `/energy` dan `/comparison`. Jangan duplikasi rumusnya lagi.
 
-### Konsekuensi yang perlu diketahui
+### Jeda logging
 
-Kalau logging sempat berhenti, energi selama jeda akan **dilimpahkan ke hari saat logging
-kembali jalan**, karena selisih pertama setelah jeda menjembatani seluruh periode itu.
-Contoh nyata: jeda 3 hari 18 jam berakhir 20 Sep 19:00 WIB → 64.915 kWh masuk ke bucket
-20 Sep. Total bulanan tetap benar, distribusi hariannya yang melar. Ini artefak jeda data,
-bukan bug rumus — rumus lama justru menghilangkan energi itu sama sekali.
+Selisih yang menjembatani jeda logging **tidak dihitung**. Batasnya `MAX_GAP_MINUTES`
+= 4 × `LOG_INTERVAL_MINUTES` (default 60 menit), cukup longgar untuk menoleransi beberapa
+siklus yang terlewat tapi tidak sampai menelan jeda panjang.
+
+Tanpa filter ini, pembacaan pertama setelah jeda membawa seluruh energi selama jeda dan
+menimbunnya di hari saat logging kembali jalan — jeda 3 hari 18 jam pernah membuat bucket
+20 Sep 2026 jadi 67.958 kWh, sekitar 4× hari normal. Energi selama jeda memang tidak
+terukur, jadi lebih jujur tidak dihitung daripada dibebankan ke satu hari. Konsekuensinya
+hari yang datanya bolong akan tampil rendah — itu memang kondisi sebenarnya.
+
+> Efek samping: kalau hari ini ada jeda, kartu **Energy Today** (selisih akumulator murni)
+> akan lebih besar daripada bar hari ini di chart bulanan (hanya interval terukur). Keduanya
+> benar menurut definisinya masing-masing, tapi angkanya tidak akan sama.
+
+Ada `backend/test-energy-query.js` untuk menjaga rumus ini: memastikan tidak ada bucket
+harian yang melebihi batas fisik (24 jam × daya puncak) maupun bernilai negatif.
+Jalankan `node test-energy-query.js` dari folder `backend`.
 
 ### Energy Today
 
@@ -292,8 +304,11 @@ Get-Content C:\Apps\ems-cmry\backend\daemon\emsbackend.out.log -Tail 40
 2. Bandingkan `Active Power / Apparent Power` dengan `PF Total`
 3. Cek akumulator energi monoton naik dan ordenya wajar (~4×10⁸ Wh per 2026-09-24)
 4. Lonjakan dengan faktor 2ⁿ → frame tergeser, restart service (§6.1)
-5. Bucket harian melar → cek jeda logging (§5)
+5. Bucket harian terlihat rendah → cek jeda logging, bukan bug rumus (§5)
 6. Baru terakhir: curigai `device_types.params`
+
+Jalankan juga `node test-energy-query.js` dari folder `backend` — kalau rumus energi
+bermasalah, test ini gagal duluan sebelum kamu menebak-nebak.
 
 ---
 
@@ -305,5 +320,5 @@ Get-Content C:\Apps\ems-cmry\backend\daemon\emsbackend.out.log -Tail 40
 | `frontend/src/api/axios.js` hardcode `http://172.104.1.81:3010/api` | pindah server = wajib rebuild frontend; kembalikan ke `REACT_APP_API_URL` |
 | Password default `admin/admin` masih aktif | risiko keamanan |
 | Energy Today rusak kalau meter reset di tengah hari | §5 |
-| Jeda logging melarkan bucket harian | §5 |
-| Tidak ada test otomatis | perubahan formula energi hanya terverifikasi manual |
+| Energy Today dan bar chart hari ini bisa beda saat ada jeda logging | §5 |
+| Cakupan test tipis | hanya rumus energi yang punya `test-energy-query.js` |

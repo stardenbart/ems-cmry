@@ -31,13 +31,30 @@ async function hasEnergyActiveData(device_id) {
 //
 // Selisih pertama tiap rentang bernilai NULL (tidak ada pembacaan sebelumnya) dan
 // otomatis diabaikan SUM — sama seperti perilaku MAX-MIN sebelumnya.
+//
+// Selisih yang menjembatani jeda logging juga dibuang (MAX_GAP). Kalau logging
+// sempat berhenti, pembacaan pertama setelah jeda menyimpan seluruh energi selama
+// jeda itu; tanpa filter ini semuanya tertimbun di hari saat logging kembali jalan
+// (jeda 3 hari 18 jam pernah membuat bucket 20 Sep 2026 jadi 67.958 kWh, ~4x hari
+// normal). Energi selama jeda memang tidak terukur, jadi lebih jujur tidak dihitung
+// daripada dibebankan ke satu hari.
+//
+// MAX_GAP = 4x interval logging (LOG_INTERVAL_MINUTES, default 15 menit), memberi
+// toleransi untuk beberapa siklus yang terlewat tanpa ikut menelan jeda panjang.
 // ────────────────────────────────────────────────────────────────────────────
+const LOG_INTERVAL_MINUTES = parseInt(process.env.LOG_INTERVAL_MINUTES) || 15;
+const MAX_GAP_MINUTES = LOG_INTERVAL_MINUTES * 4;
+
 function energyQuery(truncate, filter) {
   return `
     SELECT period, ROUND(CAST(SUM(delta) / 1000 AS numeric), 2) as total
     FROM (
       SELECT date_trunc('${truncate}', timestamp AT TIME ZONE 'Asia/Jakarta') as period,
-             GREATEST(0, value - LAG(value) OVER (ORDER BY timestamp)) as delta
+             CASE
+               WHEN timestamp - LAG(timestamp) OVER (ORDER BY timestamp)
+                    <= INTERVAL '${MAX_GAP_MINUTES} minutes'
+               THEN GREATEST(0, value - LAG(value) OVER (ORDER BY timestamp))
+             END as delta
       FROM readings
       WHERE device_id = :device_id
         AND parameter = 'Active Energy Delivered (Into Load)'
