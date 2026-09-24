@@ -77,7 +77,8 @@ Satu proses Node melayani **:3010** (REST + static `frontend/build`) dan
 | Path | `C:\Apps\ems-cmry` |
 | Proses | Windows Service **`emsbackend.exe`** (node-windows) |
 | Log | `backend/daemon/emsbackend.out.log` / `.err.log` |
-| Backup DB | `C:\Apps\backup\` |
+| Backup DB | `C:\Apps\backup\`, task **EMS DB Backup** tiap 01:00 (SYSTEM), simpan 14 hari, log di `backup.log` |
+| Waktu | w32time sinkron ke `pool.ntp.org` / `time.windows.com` (sebelum 24 Sep 2026 tidak pernah sinkron, meleset 3,5 detik) |
 
 > **pm2 sudah dicabut total** pada 24 Sep 2026 — app dihapus, daemon di-kill,
 > entri Run `PM2` dibuang. Dulu berjalan paralel dengan Windows Service, crash
@@ -232,6 +233,10 @@ Empat lapis, semuanya lahir dari kejadian nyata.
 2. **Validasi rentang** terhadap `min`/`max`.
 3. **Validasi koherensi** antar parameter — hanya yang mustahil secara fisika.
 4. **Watchdog dua lapis**: realtime 2 menit per device, logging 2× interval.
+5. **Circuit breaker per device** (`services/circuitBreaker.js`): 3 kegagalan
+   berturut-turut → device dilewati 30 detik, berlipat sampai 5 menit. Tanpa ini
+   satu device mati di bus RS485 memperlambat semua device lain di bus itu.
+   **Read** manual dan **Test** di Data Gateway tetap menembus.
 
 ### Aturan koherensi harus konservatif
 
@@ -331,6 +336,15 @@ token kedaluwarsa.
 > sebagai sesi kedaluwarsa dan melempar user ke halaman login. Seluruh halaman
 > kosong, dan itu memadamkan sistem, bukan mengamankannya.
 
+### Ganti password wajib
+
+Akun ber-`must_change_password` hanya boleh memanggil `/auth/me` dan
+`/auth/change-password`; endpoint lain menjawab **428**, dan interceptor
+frontend mengarahkannya ke `/change-password?required=1`. Ganti password
+mengembalikan token baru, karena token lama masih membawa penandanya.
+Password yang diketik admin — user baru maupun reset — otomatis wajib diganti
+pemiliknya saat login pertama.
+
 ---
 
 ## 12. Menjalankan dan memelihara
@@ -374,7 +388,7 @@ Get-Content C:\Apps\ems-cmry\backend\daemon\emsbackend.out.log -Tail 40
 
 | Hal | Dampak |
 |---|---|
-| `admin/admin` masih aktif di produksi | risiko keamanan; guard ada tapi sengaja dimatikan sampai alur UI siap |
+| `admin/admin` masih aktif di produksi | alur UI ganti password wajib sudah siap (24 Sep 2026); tinggal diaktifkan dengan `node check-default-passwords.js` |
 | HTTP polos, tanpa TLS | kredensial melintas terbuka di jaringan pabrik |
 | WebSocket menyiarkan semua device ke semua client | boros; belum mendesak karena pemakaian 1–5 user |
 | `RealtimeDevice` dan `DeviceDetail` tumpang tindih | dua halaman melakukan hal serupa |
