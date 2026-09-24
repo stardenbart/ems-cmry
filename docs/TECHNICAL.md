@@ -110,6 +110,8 @@ urut nama, dicatat di `schema_migrations`, masing-masing dalam satu transaksi.
 | 008 | `alarm_rules`, `alarm_events`, `email_templates` |
 | 009 | `shifts`, `calendar_days` |
 | 010 | `roles`, `role_capabilities`, `user_roles`, `token_version` |
+| 011 | JUMO LOGOSCREEN 601 UHT 5000: node, tipe, gateway simulasi, device |
+| 012 | deskripsi peran bawaan dalam bahasa Inggris |
 
 **Selalu backup sebelum migrasi.** `node backup.js` memakai kredensial dari
 `.env` tanpa mencetaknya.
@@ -257,6 +259,44 @@ cara termudah membuat frame Modbus tergeser.
 `POST /api/devices/:id/read-now` memaksa satu pembacaan agar hasilnya langsung
 terlihat. Keduanya lewat antrean per gateway, jadi tidak pernah bertabrakan
 dengan poll yang sedang jalan.
+
+### Gateway simulasi
+
+Gateway ber-protocol `simulated` membangkitkan nilai dari metadata parameter
+(`services/simulator.js`) lalu melewati jalur yang sama persis dengan device
+sungguhan: broadcast, dataLogger, agregasi, alarm, watchdog. Bentuk kurvanya
+diatur blok opsional `sim` pada parameter — `nominal`, `swing`, dan `rate`
+(kenaikan per jam untuk `agg: counter`). Tanpa `sim`, titik tengahnya ditebak
+dari `min`/`max`.
+
+Begitu perangkat fisik tersambung, ubah protocol gateway ke `modbus-rtu` atau
+`modbus-tcp` dari **Settings → Data Gateway**. Device yang sama langsung menarik
+data asli; riwayat pembacaannya tetap di bawah `device_id` yang sama.
+
+> Pembacaan dari masa simulasi tetap tersimpan di `readings`. Kalau angka dummy
+> itu tidak boleh ikut laporan, hapus berdasarkan `device_id` dan rentang waktu
+> sebelum tanggal peralihan.
+
+### JUMO LOGOSCREEN 601 — UHT 5000
+
+Dipasang lewat migrasi 011 di `Plant Sentul › Gedung CMD 1 › UHT 5000`, lima kanal
+suhu `TT02`, `TT05`, `TT06`, `TT09`, `TT07B` (`kind: temperature`, `unit: degC`).
+
+Dari data sheet 70652100T10Z001K000: maksimal 6 analog input universal (Pt100,
+Pt1000, termokopel, mA, V), satu port RS232/RS485 SUB-D 9 pin yang bisa dipilih,
+baud 4800–115200, format 8/1n, 8/1e, 8/1o, Modbus RTU sebagai **master atau
+slave**, dan Modbus TCP lewat Ethernet.
+
+**Yang perlu dilakukan sebelum pindah dari simulasi:**
+
+1. Set perekam sebagai **Modbus slave** di menu interface-nya, catat slave
+   address, baud, dan parity. Isi `address` device dengan slave address itu.
+2. Alamat register di migrasi 011 (`0, 2, 4, 6, 8`, float32be) **masih
+   sementara**. Data sheet tidak memuat peta registernya — itu ada di dokumen
+   *Interface Description Modbus* LOGOSCREEN 600-series. Pastikan dengan tombol
+   **Read** di Data Mapping: angka yang terbaca harus sama dengan layar perekam.
+3. Kalau urutan kata floatnya terbalik, hasil `float32le_wordswap` di Read yang
+   akan cocok — ganti `dataType` sesuai itu.
 
 ---
 
