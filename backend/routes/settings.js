@@ -496,4 +496,151 @@ router.delete('/calendar/:day', authenticate, authorize('admin', 'maintenance'),
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ==================== PERAN DAN KAPABILITAS ====================
+// Katalog kapabilitas ditetapkan aplikasi karena tiap kapabilitas harus punya
+// titik penegakan nyata di kode. Yang bebas dirakit dari UI adalah kombinasinya
+// menjadi peran.
+const caps = require('../services/capabilities');
+
+router.get('/capabilities', authenticate, authorize('admin'), async (req, res) => {
+  res.json(caps.KATALOG);
+});
+
+router.get('/roles', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const rows = await sequelize.query(`
+      SELECT r.*, COALESCE(ARRAY_AGG(rc.capability) FILTER (WHERE rc.capability IS NOT NULL), '{}') AS capabilities
+        FROM roles r LEFT JOIN role_capabilities rc ON rc.role_id = r.id
+       GROUP BY r.id ORDER BY r.name`, { type: QueryTypes.SELECT });
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/roles', authenticate, authorize('admin'), async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { name, description, capabilities } = req.body || {};
+    if (!name) { await t.rollback(); return res.status(400).json({ error: 'name diperlukan' }); }
+
+    const [row] = await sequelize.query(
+      'INSERT INTO roles (name, description) VALUES (:name, :description) RETURNING *',
+      { replacements: { name, description: description || null }, type: QueryTypes.SELECT, transaction: t });
+
+    const bersih = caps.saring(capabilities);
+    for (const c of bersih) {
+      await sequelize.query('INSERT INTO role_capabilities (role_id, capability) VALUES (:id, :c)',
+        { replacements: { id: row.id, c }, transaction: t });
+    }
+    await t.commit();
+    await audit.record(req, { action: 'create', entity: 'role', entityId: row.id, after: { ...row, capabilities: bersih } });
+    res.status(201).json({ ...row, capabilities: bersih });
+  } catch (err) { await t.rollback(); res.status(400).json({ error: err.message }); }
+});
+
+router.put('/roles/:id', authenticate, authorize('admin'), async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const [before] = await sequelize.query('SELECT * FROM roles WHERE id = :id',
+      { replacements: { id: req.params.id }, type: QueryTypes.SELECT, transaction: t });
+    if (!before) { await t.rollback(); return res.status(404).json({ error: 'Peran tidak ditemukan' }); }
+
+    await sequelize.query(`
+      UPDATE roles SET name = COALESCE(:name, name),
+             description = COALESCE(:description, description), updated_at = now()
+       WHERE id = :id`, {
+      replacements: { id: req.params.id, name: req.body.name ?? null, description: req.body.description ?? null },
+      transaction: t });
+
+    let bersih = null;
+    if (Array.isArray(req.body.capabilities)) {
+      bersih = caps.saring(req.body.capabilities);
+      await sequelize.query('DELETE FROM role_capabilities WHERE role_id = :id',
+        { replacements: { id: req.params.id }, transaction: t });
+      for (const c of bersih) {
+        await sequelize.query('INSERT INTO role_capabilities (role_id, capability) VALUES (:id, :c)',
+          { replacements: { id: req.params.id, c }, transaction: t });
+      }
+      // Kewenangan berubah berarti token lama tidak boleh dipakai lagi.
+      await sequelize.query(`
+        UPDATE users SET token_version = token_version + 1
+         WHERE id IN (SELECT user_id FROM user_roles WHERE role_id = :id)`,
+        { replacements: { id: req.params.id }, transaction: t });
+    }
+    await t.commit();
+    await audit.record(req, { action: 'update', entity: 'role', entityId: req.params.id, before, after: { capabilities: bersih } });
+    res.json({ id: Number(req.params.id), capabilities: bersih });
+  } catch (err) { await t.rollback(); res.status(400).json({ error: err.message }); }
+});
+
+router.delete('/roles/:id', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const [row] = await sequelize.query('SELECT * FROM roles WHERE id = :id',
+      { replacements: { id: req.params.id }, type: QueryTypes.SELECT });
+    if (!row) return res.status(404).json({ error: 'Peran tidak ditemukan' });
+    if (row.is_system) return res.status(400).json({ error: 'Peran bawaan tidak bisa dihapus' });
+
+    await sequelize.query('DELETE FROM roles WHERE id = :id', { replacements: { id: req.params.id } });
+    await audit.record(req, { action: 'delete', entity: 'role', entityId: req.params.id, before: row });
+    res.json({ message: 'Peran dihapus' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Penugasan peran ke user ─────────────────────────────────────────────────
+router.get('/users/:id/roles', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const rows = await sequelize.query(`
+      SELECT ur.id, ur.role_id, r.name AS role_name, ur.asset_node_id, a.name AS node_name
+        FROM user_roles ur
+        JOIN roles r ON r.id = ur.role_id
+        LEFT JOIN asset_nodes a ON a.id = ur.asset_node_id
+       WHERE ur.user_id = :id ORDER BY r.name`,
+      { replacements: { id: req.params.id }, type: QueryTypes.SELECT });
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/users/:id/roles', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const { role_id, asset_node_id } = req.body || {};
+    if (!role_id) return res.status(400).json({ error: 'role_id diperlukan' });
+
+    const [row] = await sequelize.query(`
+      INSERT INTO user_roles (user_id, role_id, asset_node_id)
+      VALUES (:user_id, :role_id, :node)
+      ON CONFLICT (user_id, role_id, asset_node_id) DO NOTHING RETURNING *`, {
+      replacements: { user_id: req.params.id, role_id, node: asset_node_id || null },
+      type: QueryTypes.SELECT });
+
+    await sequelize.query('UPDATE users SET token_version = token_version + 1 WHERE id = :id',
+      { replacements: { id: req.params.id } });
+    await audit.record(req, { action: 'create', entity: 'user_role', entityId: req.params.id, after: { role_id, asset_node_id } });
+    res.status(201).json(row || { message: 'Penugasan sudah ada' });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+router.delete('/users/:userId/roles/:id', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    // Admin terakhir tidak boleh kehilangan perannya, kalau tidak sistem
+    // terkunci tanpa siapa pun yang bisa membukanya.
+    const [cek] = await sequelize.query(`
+      SELECT COUNT(*) AS n FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+       WHERE r.name = 'admin' AND ur.id <> :id`,
+      { replacements: { id: req.params.id }, type: QueryTypes.SELECT });
+    const [ini] = await sequelize.query(`
+      SELECT r.name FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.id = :id`,
+      { replacements: { id: req.params.id }, type: QueryTypes.SELECT });
+
+    if (ini && ini.name === 'admin' && Number(cek.n) === 0) {
+      return res.status(400).json({ error: 'Ini penugasan admin terakhir, tidak bisa dihapus' });
+    }
+
+    await sequelize.query('DELETE FROM user_roles WHERE id = :id', { replacements: { id: req.params.id } });
+    await sequelize.query('UPDATE users SET token_version = token_version + 1 WHERE id = :id',
+      { replacements: { id: req.params.userId } });
+    await audit.record(req, { action: 'delete', entity: 'user_role', entityId: req.params.id });
+    res.json({ message: 'Penugasan dihapus' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;
+
