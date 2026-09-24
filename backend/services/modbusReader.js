@@ -2,6 +2,8 @@ const ModbusRTU = require('modbus-serial');
 const { Device, DeviceType, DataGateway } = require('../models');
 const { broadcastData } = require('../websocket/wsServer');
 const { checkAlarms } = require('./alarmChecker');
+const { markRead } = require('./watchdog');
+const { buildBlocks, dueAtCycle } = require('./modbusBlocks');
 
 const clients = {};
 let devices = [];
@@ -119,7 +121,39 @@ function readInt16(data, offset = 0) {
   return val > 32767 ? val - 65536 : val;
 }
 
-async function readDevice(client, device) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Dekode satu parameter dari kata-kata register miliknya.
+function decodeParam(param, words) {
+  const dataType = (param.dataType || 'float32be').toLowerCase();
+
+  if (dataType === 'int16') return readInt16(words);
+  if (dataType === 'uint16') return words[0];
+  if (dataType === 'int32') {
+    const buf = Buffer.alloc(4);
+    buf.writeUInt16BE(words[0], 0);
+    buf.writeUInt16BE(words[1], 2);
+    return buf.readInt32BE(0);
+  }
+  if (dataType === 'int64-be') {
+    const buf = Buffer.alloc(8);
+    for (let i = 0; i < 4; i++) buf.writeUInt16BE(words[i], i * 2);
+    return Number(buf.readBigInt64BE(0));
+  }
+  return readFloat32BE(words);
+}
+
+// Blok dibaca sekaligus; kalau satu blok gagal, parameter di dalamnya dicoba
+// satu per satu supaya satu register bermasalah tidak menjatuhkan seluruh blok.
+// Matikan lewat MODBUS_BLOCK_READ=0 kalau perlu kembali ke perilaku lama.
+const BLOCK_READ = process.env.MODBUS_BLOCK_READ !== '0';
+
+// Nilai terakhir per device, supaya parameter berkelas lambat tetap ikut
+// disiarkan di siklus saat blok-nya dilewati.
+const lastValues = {};
+let cycle = 0;
+
+async function readDevice(client, device, opts = {}) {
   const deviceType = deviceTypes[device.device_type_id];
   if (!deviceType || !deviceType.params) return null;
 
@@ -131,39 +165,47 @@ async function readDevice(client, device) {
     ? JSON.parse(deviceType.params)
     : deviceType.params;
 
-  for (const param of params) {
+  const readOne = async (param) => {
     try {
-      const response = await client.readHoldingRegisters(param.address, param.length || 2);
-      const dataType = (param.dataType || 'float32be').toLowerCase();
-
-      if (dataType === 'float32be' || dataType === 'float32') {
-        result[param.name] = readFloat32BE(response.data);
-      } else if (dataType === 'int16') {
-        result[param.name] = readInt16(response.data);
-      } else if (dataType === 'uint16') {
-        result[param.name] = response.data[0];
-      } else if (dataType === 'int32') {
-        const buf = Buffer.alloc(4);
-        buf.writeUInt16BE(response.data[0], 0);
-        buf.writeUInt16BE(response.data[1], 2);
-        result[param.name] = buf.readInt32BE(0);
-      } else if (dataType === 'int64-be') {
-        const buf = Buffer.alloc(8);
-        buf.writeUInt16BE(response.data[0], 0);
-        buf.writeUInt16BE(response.data[1], 2);
-        buf.writeUInt16BE(response.data[2], 4);
-        buf.writeUInt16BE(response.data[3], 6);
-        result[param.name] = Number(buf.readBigInt64BE(0));
-      } else {
-        result[param.name] = readFloat32BE(response.data);
-      }
+      const r = await client.readHoldingRegisters(Number(param.address), Number(param.length) || 2);
+      result[param.name] = decodeParam(param, r.data);
     } catch (err) {
       result[param.name] = null;
       failed++;
     }
-    await new Promise((r) => setTimeout(r, 50));
+    await sleep(50);
+  };
+
+  const useBlocks = opts.blockRead === undefined ? BLOCK_READ : opts.blockRead;
+  const allBlocks = opts.allBlocks === true;
+
+  if (useBlocks) {
+    const blocks = buildBlocks(params);
+    for (const block of blocks) {
+      if (!allBlocks && !dueAtCycle(block, cycle)) continue;
+      try {
+        const res = await client.readHoldingRegisters(block.start, block.length);
+        for (const { param, offset } of block.params) {
+          const len = Number(param.length) || 2;
+          result[param.name] = decodeParam(param, res.data.slice(offset, offset + len));
+        }
+        await sleep(30);
+      } catch (err) {
+        console.warn(`[Modbus] blok ${block.start}+${block.length} gagal (${err.message}), fallback per parameter`);
+        for (const { param } of block.params) await readOne(param);
+      }
+    }
+  } else {
+    for (const param of params) await readOne(param);
   }
 
+  if (opts.isolated) return { data: result, failed };
+
+  // Gabungkan dengan nilai terakhir supaya snapshot selalu lengkap.
+  const merged = Object.assign({}, lastValues[device.id] || {}, result);
+  lastValues[device.id] = merged;
+
+  return { data: merged, failed };
   return { data: result, failed };
 }
 
@@ -198,6 +240,7 @@ async function pollDevice(device) {
       deviceId: device.id,
     });
     checkAlarms(device.id, data);
+    markRead(device.id);
     return data;
   } catch (err) {
     console.error(`[Modbus] Error reading ${device.name}: ${err.message}`);
@@ -211,6 +254,8 @@ async function pollDevice(device) {
 
 async function pollAllDevices() {
   if (!isRunning) return;
+
+  cycle++;
 
   // Terapkan perubahan konfigurasi di sini, sebelum siklus dimulai.
   if (reloadPending) {
@@ -392,6 +437,46 @@ async function probeRegister({ gatewayId, slaveId, address, length }) {
   });
 }
 
+// Baca device dua cara lalu bandingkan. Block read mengubah cara bicara dengan
+// meter dan tidak bisa diuji tanpa perangkat, jadi pembandingan ini yang
+// membuktikannya di lapangan: hasil kedua cara harus identik.
+async function compareReadStrategies(deviceId) {
+  const device = devices.find((d) => String(d.id) === String(deviceId));
+  if (!device) throw new Error(`Device ${deviceId} tidak ditemukan`);
+
+  return withGateway(device.data_gateway_id, async () => {
+    const gateway = gateways[device.data_gateway_id];
+    const client = await connectGateway(gateway);
+    if (!client) throw new Error(`Gateway ${gateway ? gateway.name : ''} tidak bisa dibuka`);
+
+    const blok = await readDevice(client, device, { blockRead: true, allBlocks: true, isolated: true });
+    await sleep(200);
+    const satuan = await readDevice(client, device, { blockRead: false, isolated: true });
+
+    const beda = [];
+    const nama = new Set([...Object.keys(blok.data), ...Object.keys(satuan.data)]);
+    for (const n of nama) {
+      const a = blok.data[n];
+      const b = satuan.data[n];
+      if (a === b) continue;
+      // Nilai analog bergerak antar pembacaan; beda kecil itu wajar.
+      if (typeof a === 'number' && typeof b === 'number') {
+        const skala = Math.max(Math.abs(a), Math.abs(b), 1e-9);
+        if (Math.abs(a - b) / skala < 0.02) continue;
+      }
+      beda.push({ parameter: n, blockRead: a, perParameter: b });
+    }
+
+    return {
+      device: device.name,
+      cocok: beda.length === 0,
+      gagalBlockRead: blok.failed,
+      gagalPerParameter: satuan.failed,
+      beda,
+    };
+  });
+}
+
 module.exports = {
   startModbusReader,
   stopModbusReader,
@@ -400,4 +485,5 @@ module.exports = {
   readDeviceNow,
   probeRegister,
   decodeAll,
+  compareReadStrategies,
 };

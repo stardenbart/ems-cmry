@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { Device, DataGateway, DeviceType, Group } = require('../models');
 const { authenticate, authorize } = require('../middleware/auth');
-const { readDeviceNow, requestReload } = require('../services/modbusReader');
+const { readDeviceNow, requestReload, compareReadStrategies } = require('../services/modbusReader');
 
 // GET /api/devices - List semua devices
 router.get('/', authenticate, async (req, res) => {
@@ -119,6 +119,17 @@ router.post('/:id/read-now', authenticate, authorize('admin', 'maintenance'), as
     res.json({ deviceId: device.id, data, timestamp: new Date().toISOString() });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/devices/:id/verify-blockread
+// Bandingkan hasil block read dengan pembacaan per parameter. Dipakai untuk
+// membuktikan block read aman pada perangkat nyata sebelum dipercaya.
+router.post('/:id/verify-blockread', authenticate, authorize('admin', 'maintenance'), async (req, res) => {
+  try {
+    res.json(await compareReadStrategies(req.params.id));
+  } catch (err) {
+    res.status(502).json({ error: err.message });
   }
 });
 

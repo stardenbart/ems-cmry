@@ -1,7 +1,11 @@
 const cron = require('node-cron');
 const { Reading, Device, DeviceType } = require('../models');
+const sequelize = require('../config/database');
+const { QueryTypes } = require('sequelize');
 const { getLatestData } = require('../websocket/wsServer');
 const { qualityMap, coherenceIssues } = require('./validation');
+const spool = require('./spool');
+const { markSave } = require('./watchdog');
 
 // Configurable via .env: LOG_INTERVAL_MINUTES=15
 const INTERVAL = parseInt(process.env.LOG_INTERVAL_MINUTES) || 15;
@@ -85,9 +89,41 @@ function startDataLogger() {
         }
       }
 
+      // Lengkapi parameter_id supaya baris baru ikut punya identitas stabil.
       if (records.length > 0) {
-        await Reading.bulkCreate(records);
-        console.log(`[DataLogger] ✓ Saved ${records.length} readings at ${timestamp.toLocaleString('id-ID')}`);
+        try {
+          const names = [...new Set(records.map((r) => r.parameter))];
+          await sequelize.query(
+            'INSERT INTO parameters (name) SELECT unnest(ARRAY[:names]::varchar[]) ON CONFLICT (name) DO NOTHING',
+            { replacements: { names } });
+          const rows = await sequelize.query(
+            'SELECT id, name FROM parameters WHERE name = ANY(ARRAY[:names]::varchar[])',
+            { replacements: { names }, type: QueryTypes.SELECT });
+          const idByName = {};
+          rows.forEach((r) => { idByName[r.name] = r.id; });
+          records.forEach((r) => { r.parameter_id = idByName[r.parameter] || null; });
+        } catch (e) {
+          // Tabel parameters belum ada (migrasi belum dijalankan). Biarkan null.
+        }
+      }
+
+      if (records.length > 0) {
+        try {
+          // Coba kosongkan spool lebih dulu supaya urutan waktunya tetap wajar.
+          const r = await spool.replay((rows) => Reading.bulkCreate(rows));
+          if (r.restored > 0) console.log(`[DataLogger] ${r.restored} baris dari spool berhasil dipulihkan`);
+
+          await Reading.bulkCreate(records);
+          markSave();
+          console.log(`[DataLogger] ✓ Saved ${records.length} readings at ${timestamp.toLocaleString('id-ID')}`);
+        } catch (dbErr) {
+          // Database tidak bisa ditulis. Simpan ke spool, jangan hilangkan datanya.
+          const { dropped } = spool.append(records);
+          console.error(`[DataLogger] Gagal tulis DB (${dbErr.message}) — ${records.length} baris masuk spool`);
+          if (dropped > 0) {
+            console.error(`[DataLogger] SPOOL PENUH: ${dropped} berkas terlama dibuang. Periksa database segera.`);
+          }
+        }
       } else {
         console.log(`[DataLogger] No valid readings to save at ${timestamp.toLocaleString('id-ID')}`);
       }

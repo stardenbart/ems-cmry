@@ -24,6 +24,13 @@ const User = sequelize.define('User', {
       isIn: [['admin', 'maintenance', 'operator', 'viewer']],
     },
   },
+  // Ditandai true untuk akun yang masih memakai password bawaan. Selama true,
+  // seluruh endpoint selain auth ditolak sampai passwordnya diganti.
+  must_change_password: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
 }, {
   tableName: 'users',
   timestamps: true,

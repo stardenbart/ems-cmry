@@ -24,7 +24,8 @@ router.post('/login', async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user.id, username: user.username, level: user.level, name: user.name },
+      { id: user.id, username: user.username, level: user.level, name: user.name,
+        mcp: user.must_change_password === true },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -36,6 +37,7 @@ router.post('/login', async (req, res) => {
         name: user.name,
         username: user.username,
         level: user.level,
+        must_change_password: user.must_change_password === true,
       },
     });
   } catch (err) {
@@ -81,6 +83,7 @@ router.put('/change-password', authenticate, async (req, res) => {
     user.password = newPassword;
     await user.save();
 
+    if (user.must_change_password) await user.update({ must_change_password: false });
     res.json({ message: 'Password berhasil diubah' });
   } catch (err) {
     res.status(500).json({ error: err.message });

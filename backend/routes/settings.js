@@ -4,6 +4,7 @@ const { authenticate, authorize } = require('../middleware/auth');
 const { sendTestEmail } = require('../services/emailService');
 const { requestReload, probeRegister } = require('../services/modbusReader');
 const { invalidateUnits } = require('../services/aggregation');
+const audit = require('../services/audit');
 
 // ==================== DATA GATEWAY ====================
 
@@ -30,8 +31,12 @@ router.put('/gateways/:id', authenticate, authorize('admin', 'maintenance'), asy
   try {
     const gw = await DataGateway.findByPk(req.params.id);
     if (!gw) return res.status(404).json({ error: 'Gateway tidak ditemukan' });
+    const before = gw.toJSON();
     await gw.update(req.body);
     requestReload();
+    await audit.record(req, {
+      action: 'update', entity: 'gateway', entityId: gw.id, before, after: gw.toJSON(),
+    });
     res.json(gw);
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
@@ -69,8 +74,13 @@ router.put('/device-types/:id', authenticate, authorize('admin'), async (req, re
   try {
     const dt = await DeviceType.findByPk(req.params.id);
     if (!dt) return res.status(404).json({ error: 'Device type tidak ditemukan' });
+    const before = { name: dt.name, params: dt.params };
     await dt.update(req.body);
     requestReload();
+    await audit.record(req, {
+      action: 'update', entity: 'device_type', entityId: dt.id,
+      before, after: { name: dt.name, params: dt.params },
+    });
     res.json(dt);
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
@@ -268,8 +278,12 @@ router.put('/units/:id', authenticate, authorize('admin', 'maintenance'), async 
     const u = await Unit.findByPk(req.params.id);
     if (!u) return res.status(404).json({ error: 'Satuan tidak ditemukan' });
     const { is_system, ...rest } = req.body; // is_system tidak bisa diubah lewat API
+    const before = u.toJSON();
     await u.update(rest);
     invalidateUnits();
+    await audit.record(req, {
+      action: 'update', entity: 'unit', entityId: u.id, before, after: u.toJSON(),
+    });
     res.json(u);
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
@@ -308,6 +322,23 @@ router.post('/probe-register', authenticate, authorize('admin', 'maintenance'), 
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
+});
+
+// GET /api/settings/audit?entity=device_type&limit=50
+router.get('/audit', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const sequelize = require('../config/database');
+    const { QueryTypes } = require('sequelize');
+    const limit = Math.min(parseInt(req.query.limit) || 50, 500);
+    const rows = await sequelize.query(`
+      SELECT id, at, username, action, entity, entity_id, before_val, after_val, ip
+        FROM audit_log
+       ${req.query.entity ? 'WHERE entity = :entity' : ''}
+       ORDER BY at DESC LIMIT :limit`, {
+      replacements: { entity: req.query.entity, limit }, type: QueryTypes.SELECT,
+    });
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 module.exports = router;

@@ -23,6 +23,12 @@ const Reading = sequelize.define('Reading', {
     type: DataTypes.DOUBLE,
     allowNull: true,
   },
+  // Identitas stabil parameter. Kolom teks di atas masih jadi kunci utama
+  // sampai seluruh query dipindahkan.
+  parameter_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
   // 0 = good, 1 = suspect (gagal validasi rentang atau koherensi), 2 = estimated
   quality: {
     type: DataTypes.SMALLINT,

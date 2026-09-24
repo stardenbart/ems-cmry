@@ -5,6 +5,7 @@ const { sequelize } = require('./models');
 const { startWebSocket } = require('./websocket/wsServer');
 const { startModbusReader } = require('./services/modbusReader');
 const { startDataLogger } = require('./services/dataLogger');
+const { startWatchdog } = require('./services/watchdog');
 require('dotenv').config();
 
 const app = express();
@@ -65,6 +66,7 @@ sequelize.authenticate()
       startWebSocket();
       startModbusReader();
       startDataLogger();
+      startWatchdog();
     });
   })
   .catch((err) => {

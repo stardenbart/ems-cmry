@@ -12,6 +12,16 @@ function authenticate(req, res, next) {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded; // { id, username, level }
+
+    // Akun yang masih memakai password bawaan hanya boleh mengakses endpoint
+    // auth, sampai passwordnya diganti. Tanpa ini, admin/admin tetap terbuka.
+    if (decoded.mcp === true && !req.path.startsWith('/change-password')) {
+      return res.status(428).json({
+        error: 'Password bawaan harus diganti sebelum memakai sistem',
+        must_change_password: true,
+      });
+    }
+
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Token tidak valid atau sudah expired' });
