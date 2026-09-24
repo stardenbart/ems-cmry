@@ -6,6 +6,8 @@ const { requestReload, probeRegister } = require('../services/modbusReader');
 const { invalidateUnits } = require('../services/aggregation');
 const audit = require('../services/audit');
 const template = require('../services/deviceTemplate');
+const sequelize = require('../config/database');
+const { QueryTypes } = require('sequelize');
 
 // ==================== DATA GATEWAY ====================
 
