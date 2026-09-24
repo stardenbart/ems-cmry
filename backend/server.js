@@ -28,6 +28,7 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/devices', require('./routes/devices'));
+app.use('/api/assets', require('./routes/assets'));
 app.use('/api/dashboards', require('./routes/dashboards'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/alarms', require('./routes/alarms'));
