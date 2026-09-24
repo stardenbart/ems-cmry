@@ -3,14 +3,15 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import './Sidebar.css';
 
-// Jendela aplikasi desktop dibuka peluncur dengan ?desktop=1 di profil browser
-// tersendiri; penandanya disimpan supaya tetap terbaca setelah navigasi.
+// Sedang berjalan sebagai aplikasi terpasang (Edge/Chrome "Install as app")?
+// Jendela aplikasi melaporkan display-mode standalone; ?desktop=1 dari
+// start_url manifest dipakai sebagai cadangan. Tombol install disembunyikan
+// di dalam aplikasi itu sendiri.
 export function isDesktopApp() {
   try {
-    if (new URLSearchParams(window.location.search).get('desktop') === '1') {
-      localStorage.setItem('ems_desktop', '1');
-    }
-    return localStorage.getItem('ems_desktop') === '1';
+    if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+    if (window.matchMedia && window.matchMedia('(display-mode: window-controls-overlay)').matches) return true;
+    return new URLSearchParams(window.location.search).get('desktop') === '1';
   } catch (e) { return false; }
 }
 
@@ -174,10 +175,11 @@ function Sidebar({ isOpen, onClose }) {
         <div className="sidebar-bottom">
           <div className="sidebar-user-info">{user?.name}</div>
           {!isDesktopApp() ? (
-            <a className="sidebar-bottom-btn" href="/download/EMS-Desktop.exe" download
-              title="Install EMS as a desktop app with its own icon">
-              Download Desktop App
-            </a>
+            <Link className="sidebar-bottom-btn" to="/guide#desktop-app"
+              title="Install EMS as a desktop app with its own icon"
+              onClick={() => { if (window.innerWidth <= 768) onClose(); }}>
+              Install Desktop App
+            </Link>
           ) : null}
           <button className="sidebar-bottom-btn" onClick={() => { navigate('/change-password'); if (window.innerWidth <= 768) onClose(); }}>
             Change Password

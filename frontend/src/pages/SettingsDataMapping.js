@@ -13,19 +13,19 @@ import api from '../api/axios';
 
 const DATA_TYPE = ['float32be', 'int16', 'uint16', 'int32', 'int64-be'];
 const AGG = [
-  { key: 'gauge', label: 'gauge — nilai sesaat, dirata-rata' },
-  { key: 'counter', label: 'counter — akumulator, dijumlah selisihnya' },
+  { key: 'gauge', label: 'gauge — instant value, averaged' },
+  { key: 'counter', label: 'counter — running total, increments are summed' },
 ];
 const POLL_CLASS = [
-  { key: 'fast', label: 'fast — tiap siklus' },
-  { key: 'normal', label: 'normal — tiap 2 siklus' },
-  { key: 'slow', label: 'slow — tiap 10 siklus' },
+  { key: 'fast', label: 'fast — every cycle' },
+  { key: 'normal', label: 'normal — every 2nd cycle' },
+  { key: 'slow', label: 'slow — every 10th cycle' },
 ];
 const CONV_MODE = [
-  { key: 'none', label: 'none — angka perangkat apa adanya' },
-  { key: 'template', label: 'template — pakai satuan standar' },
-  { key: 'manual', label: 'manual — skala dan offset sendiri' },
-  { key: 'pf_ieee', label: 'pf_ieee — power factor Schneider, lipat nilai di atas 1' },
+  { key: 'none', label: 'none — use the device value as is' },
+  { key: 'template', label: 'template — standard unit conversion' },
+  { key: 'manual', label: 'manual — your own scale and offset' },
+  { key: 'pf_ieee', label: 'pf_ieee — Schneider power factor (folds values above 1)' },
 ];
 const KIND = ['energy', 'power', 'reactive_power', 'apparent_power', 'current', 'voltage',
   'frequency', 'power_factor', 'thd', 'temperature', 'pressure', 'flow', 'other'];
@@ -192,7 +192,7 @@ function SettingsDataMapping() {
             {tampilForm ? 'Cancel' : 'Add Data Mapping'}
           </button>
           <label className="btn" style={{ cursor: 'pointer', border: '1px solid #ddd', padding: '6px 14px', borderRadius: 4, fontSize: 13 }}>
-            Impor template
+            Import template
             <input type="file" accept="application/json" onChange={imporType} style={{ display: 'none' }} />
           </label>
         </div>
@@ -204,11 +204,11 @@ function SettingsDataMapping() {
                 <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                   required style={{ display: 'block', padding: 6, marginTop: 4, minWidth: 180 }} />
               </label>
-              <label style={{ fontSize: 12 }}>Kategori
+              <label style={{ fontSize: 12 }}>Category
                 <input value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
                   style={{ display: 'block', padding: 6, marginTop: 4, minWidth: 150 }} />
               </label>
-              <label style={{ fontSize: 12 }}>Gateway untuk uji baca
+              <label style={{ fontSize: 12 }}>Gateway for test reads
                 <select value={probe.gatewayId} onChange={(e) => setProbe((p) => ({ ...p, gatewayId: e.target.value }))}
                   style={{ display: 'block', padding: 6, marginTop: 4, minWidth: 150 }}>
                   {gateways.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
@@ -236,7 +236,7 @@ function SettingsDataMapping() {
                     <th style={{ width: 110 }}>Aggregation</th>
                     <th style={{ width: 50 }}>Save</th>
                     <th style={{ width: 50 }}>Featured</th>
-                    <th style={{ width: 150 }}>Aksi</th>
+                    <th style={{ width: 170 }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -248,7 +248,7 @@ function SettingsDataMapping() {
                         <td><input value={p.label || ''} placeholder={p.name}
                           onChange={(e) => ubahParam(i, 'label', e.target.value)} style={sel} /></td>
                         <td><input type="number" value={p.address} onChange={(e) => ubahParam(i, 'address', e.target.value)} style={sel} /></td>
-                        <td><input type="number" min="1" max="125" value={p.length} onChange={(e) => ubahParam(i, 'length', e.target.value)} style={sel} /></td>
+                        <td><input type="number" min="1" max="125" value={p.length} onChange={(e) => ubahParam(i, 'length', e.target.value)} style={{ ...sel, minWidth: 46 }} /></td>
                         <td>
                           <select value={p.dataType} onChange={(e) => ubahParam(i, 'dataType', e.target.value)} style={sel}>
                             {DATA_TYPE.map((d) => <option key={d} value={d}>{d}</option>)}
@@ -279,8 +279,9 @@ function SettingsDataMapping() {
                           <button type="button" onClick={() => bacaSekarang(i)} title="read this register from the device now"
                             style={{ fontSize: 11, padding: '2px 7px', cursor: 'pointer', marginRight: 3 }}>Read</button>
                           <button type="button" onClick={() => setRinci((r) => ({ ...r, [i]: !r[i] }))}
+                            title="More settings: conversion, plausible min/max, decimals, read rate, order"
                             style={{ fontSize: 11, padding: '2px 7px', cursor: 'pointer', marginRight: 3 }}>
-                            {rinci[i] ? '−' : '+'}
+                            {rinci[i] ? 'Less' : 'More'}
                           </button>
                           <button type="button" onClick={() => pindah(i, -1)} style={{ fontSize: 11, padding: '2px 5px', cursor: 'pointer' }}>↑</button>
                           <button type="button" onClick={() => pindah(i, 1)} style={{ fontSize: 11, padding: '2px 5px', cursor: 'pointer' }}>↓</button>
@@ -292,7 +293,7 @@ function SettingsDataMapping() {
                       {probe.hasil[i] ? (
                         <tr>
                           <td colSpan="12" style={{ background: '#f8f9fa', fontSize: 11 }}>
-                            Hasil baca alamat {p.address}:{' '}
+                            Read result for address {p.address}:{' '}
                             {Object.entries(probe.hasil[i])
                               .filter(([k]) => k !== 'raw')
                               .map(([k, v]) => (
@@ -309,7 +310,7 @@ function SettingsDataMapping() {
                         <tr>
                           <td colSpan="12" style={{ background: '#fbfbfb' }}>
                             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', padding: '6px 0' }}>
-                              <label style={{ fontSize: 11 }}>Konversi
+                              <label style={{ fontSize: 11 }}>Conversion
                                 <select value={p.conv_mode} onChange={(e) => ubahParam(i, 'conv_mode', e.target.value)}
                                   style={{ display: 'block', padding: 4, marginTop: 2, minWidth: 200 }}>
                                   {CONV_MODE.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
@@ -323,28 +324,28 @@ function SettingsDataMapping() {
                                 <input type="number" step="any" value={p.offset} onChange={(e) => ubahParam(i, 'offset', e.target.value)}
                                   style={{ display: 'block', padding: 4, marginTop: 2, width: 90 }} />
                               </label>
-                              <label style={{ fontSize: 11 }}>Min wajar
+                              <label style={{ fontSize: 11 }}>Plausible min
                                 <input type="number" step="any" value={p.min === null ? '' : p.min}
                                   onChange={(e) => ubahParam(i, 'min', e.target.value)}
                                   style={{ display: 'block', padding: 4, marginTop: 2, width: 100 }} />
                               </label>
-                              <label style={{ fontSize: 11 }}>Max wajar
+                              <label style={{ fontSize: 11 }}>Plausible max
                                 <input type="number" step="any" value={p.max === null ? '' : p.max}
                                   onChange={(e) => ubahParam(i, 'max', e.target.value)}
                                   style={{ display: 'block', padding: 4, marginTop: 2, width: 100 }} />
                               </label>
-                              <label style={{ fontSize: 11 }}>Desimal
+                              <label style={{ fontSize: 11 }}>Decimals
                                 <input type="number" min="0" max="6" value={p.precision}
                                   onChange={(e) => ubahParam(i, 'precision', e.target.value)}
                                   style={{ display: 'block', padding: 4, marginTop: 2, width: 70 }} />
                               </label>
-                              <label style={{ fontSize: 11 }}>Laju baca
+                              <label style={{ fontSize: 11 }}>Read rate
                                 <select value={p.poll_class} onChange={(e) => ubahParam(i, 'poll_class', e.target.value)}
                                   style={{ display: 'block', padding: 4, marginTop: 2, minWidth: 170 }}>
                                   {POLL_CLASS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
                                 </select>
                               </label>
-                              <label style={{ fontSize: 11 }}>Urutan
+                              <label style={{ fontSize: 11 }}>Order
                                 <input type="number" value={p.order} onChange={(e) => ubahParam(i, 'order', e.target.value)}
                                   style={{ display: 'block', padding: 4, marginTop: 2, width: 80 }} />
                               </label>
@@ -370,8 +371,8 @@ function SettingsDataMapping() {
               </button>
             </div>
             <div style={{ fontSize: 11, color: '#7f8c8d', marginTop: 8 }}>
-              Baris tanpa nama diabaikan saat menyimpan. Perubahan langsung dipakai pada siklus
-              pembacaan berikutnya, tanpa restart.
+              Rows without a name are ignored when saving. Changes take effect on the next read
+              cycle — no restart needed.
             </div>
           </form>
         )}

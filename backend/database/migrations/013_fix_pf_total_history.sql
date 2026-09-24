@@ -6,9 +6,9 @@
 -- Power Factor 1,60 karena itu. Isinya, dari penelusuran per rentang nilai:
 --
 --   Jun 11 - Sep 8, Sep 21 - sekarang   0,64-0,68   PF Total asli        -> dibiarkan
---   Sep 9 07:15 - Sep 24 06:30 WIB      -32,768     kode "tidak tersedia"
+--   Sep 9 07:15 - Sep 24 06:30 UTC      -32,768     kode "tidak tersedia"
 --                                        50,022     register Frequency   -> 673 baris
---   Sep 24 08:15 - 13:00 WIB            0,96        PF A (alamat 3077)   -> 20 baris
+--   Sep 24 08:15 - 13:00 UTC            0,96        PF A (alamat 3077)   -> 20 baris (lihat 014)
 --
 -- Tidak ada baris yang dihapus. Yang mustahil (PF di luar -1..1) dipindah ke
 -- nama arsip, sehingga tidak ada query yang memakainya lagi tapi datanya tetap

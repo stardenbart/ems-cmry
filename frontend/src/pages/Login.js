@@ -50,10 +50,10 @@ function Login() {
 
         {!isDesktopApp() ? (
           <div style={{ textAlign: 'center', marginTop: 14, fontSize: 12 }}>
-            <a href="/download/EMS-Desktop.exe" download style={{ color: '#1B4F72' }}>
-              Download the EMS desktop app
-            </a>
-            <span style={{ color: '#95a5a6' }}> — opens EMS from a desktop icon, no browser needed</span>
+            <span style={{ color: '#95a5a6' }}>
+              Want an EMS icon on your desktop? In Edge open the <strong>⋯</strong> menu →{' '}
+              <strong>Apps</strong> → <strong>Install this site as an app</strong>.
+            </span>
           </div>
         ) : null}
 
