@@ -135,6 +135,13 @@ router.get('/:id/overview', authenticate, async (req, res) => {
     // mencampur L-L (~403 V) dengan L-N (~232 V) menjadi ~316 V yang tidak
     // berarti apa pun. featured memang disediakan untuk memilih wakil tiap
     // besaran, dan bisa diatur dari Data Mapping tanpa menyentuh kode.
+    //
+    // Dan hanya SATU wakil per device per besaran: kartu featured pertama
+    // (urutan `order`) dari besaran itu. featured juga dipakai untuk kartu KPI,
+    // sehingga satu device bisa punya PF A, B, C, dan Total sekaligus —
+    // merata-ratakan keempatnya menghasilkan 0,33 yang tidak bermakna
+    // (24 Sep 2026), sama halnya dengan merata-ratakan lima titik suhu proses
+    // yang berbeda. Wakilnya ikut dikirim supaya UI bisa menyebutkannya.
     const buckets = {};
     for (const d of devices) {
       const params = paramsByType[d.device_type_id] || [];
@@ -143,10 +150,15 @@ router.get('/:id/overview', authenticate, async (req, res) => {
       // disembunyikan; seluruh parameternya dipakai sebagai cadangan.
       const dipakai = wakil.length > 0 ? wakil : params.filter((p) => p.save !== false);
 
-      for (const p of dipakai) {
+      const urut = [...dipakai].sort((a, b) =>
+        (a.order === undefined ? 999 : Number(a.order)) - (b.order === undefined ? 999 : Number(b.order)));
+      const sudah = new Set();
+      for (const p of urut) {
         const key = `${p.kind || 'other'}|${p.unit || '-'}|${p.agg || 'gauge'}`;
+        if (sudah.has(key)) continue;
+        sudah.add(key);
         (buckets[key] = buckets[key] || { kind: p.kind, unit: p.unit, agg: p.agg, items: [] })
-          .items.push({ device: d, parameter: p.name });
+          .items.push({ device: d, parameter: p.name, label: p.label || p.name });
       }
     }
 
@@ -183,6 +195,7 @@ router.get('/:id/overview', authenticate, async (req, res) => {
         value: b.agg === 'counter' ? total : (jumlahNilai ? total / jumlahNilai : null),
         deviceCount: ikut,
         suspectCount: suspect,
+        sources: b.items.map((it) => ({ device: it.device.name, parameter: it.label })),
       });
     }
 

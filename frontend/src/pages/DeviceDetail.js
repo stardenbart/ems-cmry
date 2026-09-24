@@ -23,8 +23,8 @@ const RANGE = [
 const LABEL_KIND = {
   energy: 'Energy', power: 'Active Power', reactive_power: 'Reactive Power',
   apparent_power: 'Apparent Power', current: 'Current', voltage: 'Voltage',
-  frequency: 'Frekuensi', power_factor: 'Power Factor', thd: 'THD',
-  temperature: 'Suhu', pressure: 'Tekanan', flow: 'Aliran', other: 'Lainnya',
+  frequency: 'Frequency', power_factor: 'Power Factor', thd: 'THD',
+  temperature: 'Temperature', pressure: 'Pressure', flow: 'Flow', other: 'Other',
 };
 
 function DeviceDetail() {

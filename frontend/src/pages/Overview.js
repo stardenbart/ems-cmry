@@ -16,8 +16,8 @@ const RANGE = [
 const LABEL_KIND = {
   energy: 'Energy', power: 'Active Power', reactive_power: 'Reactive Power',
   apparent_power: 'Apparent Power', current: 'Current', voltage: 'Voltage',
-  frequency: 'Frekuensi', power_factor: 'Power Factor', thd: 'THD',
-  temperature: 'Suhu', pressure: 'Tekanan', flow: 'Aliran', other: 'Lainnya',
+  frequency: 'Frequency', power_factor: 'Power Factor', thd: 'THD',
+  temperature: 'Temperature', pressure: 'Pressure', flow: 'Flow', other: 'Other',
 };
 
 function Overview() {
@@ -98,12 +98,12 @@ function Overview() {
           <div className="card" style={{ padding: '12px 20px', marginBottom: 16, fontSize: 13 }}>
             <strong>{data.node?.name}</strong>
             <span style={{ color: '#7f8c8d' }}>
-              {' '}· {data.deviceCount} device dihitung · {data.nodeCount} node
-              {' '}· mode rollup: {data.rollupMode}
+              {' '}· {data.deviceCount} device{data.deviceCount === 1 ? '' : 's'} counted · {data.nodeCount} node{data.nodeCount === 1 ? '' : 's'}
+              {' '}· totals from: {data.rollupMode === 'incomer' ? 'incomer meter' : 'sum of feeders'}
             </span>
             {data.summary.some((s) => s.suspectCount > 0) ? (
               <span style={{ color: '#e67e22', marginLeft: 8 }}>
-                ⚠ sebagian data ditandai perlu diperiksa
+                ⚠ some data is flagged for review
               </span>
             ) : null}
           </div>
@@ -125,7 +125,11 @@ function Overview() {
                   }}
                   value={s.value}
                   suspect={s.suspectCount > 0}
-                  subtitle={`${s.agg === 'counter' ? 'total' : 'average'} of ${s.deviceCount} source${s.deviceCount === 1 ? '' : 's'}`}
+                  // Satu sumber: sebutkan device dan parameternya, supaya jelas angka
+                  // ini PF Total, bukan rata-rata PF per fasa.
+                  subtitle={s.sources && s.sources.length === 1
+                    ? `${s.sources[0].device} · ${s.sources[0].parameter}`
+                    : `${s.agg === 'counter' ? 'total' : 'average'} of ${s.deviceCount} devices`}
                 />
               ))}
             </div>
@@ -135,11 +139,11 @@ function Overview() {
           {anak.length > 0 ? (
             <div className="card" style={{ marginTop: 16 }}>
               <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', marginBottom: 12 }}>
-                Telusuri
+                Drill down
               </div>
               <div className="table-responsive">
                 <table className="data-table">
-                  <thead><tr><th>Name</th><th>Type</th><th>Device</th></tr></thead>
+                  <thead><tr><th>Name</th><th>Level</th><th>Devices</th></tr></thead>
                   <tbody>
                     {anak.map((n) => (
                       <tr key={n.id} style={{ cursor: 'pointer' }} onClick={() => setNodeId(n.id)}>
