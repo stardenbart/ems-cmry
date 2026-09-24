@@ -32,20 +32,25 @@ function resolveRange(range) {
 
 // Akumulator: jumlah selisih positif. GREATEST(0, ...) membuang langkah negatif
 // saat meter di-reset (1 Sep 2026 nilainya terjun dari 2.022.839.359 Wh ke 4.499 Wh).
+// Baris ber-quality suspect TIDAK disembunyikan. Menyembunyikannya akan membuang
+// data berbulan-bulan hanya karena satu register salah skala, dan membuat grafik
+// bolong tanpa penjelasan. Datanya tetap dihitung, jumlah baris mencurigakan
+// dilaporkan lewat suspect_count supaya UI bisa menandainya.
 function counterSql(truncate, filter) {
   return `
-    SELECT period, ROUND(CAST(SUM(delta) AS numeric), 4) AS total
+    SELECT period, ROUND(CAST(SUM(delta) AS numeric), 4) AS total,
+           SUM(suspect) AS suspect_count
     FROM (
       SELECT date_trunc('${truncate}', timestamp AT TIME ZONE 'Asia/Jakarta') AS period,
              CASE
                WHEN timestamp - LAG(timestamp) OVER (ORDER BY timestamp)
                     <= INTERVAL '${MAX_GAP_MINUTES} minutes'
                THEN GREATEST(0, value - LAG(value) OVER (ORDER BY timestamp))
-             END AS delta
+             END AS delta,
+             CASE WHEN quality <> 0 THEN 1 ELSE 0 END AS suspect
       FROM readings
       WHERE device_id = :device_id
         AND parameter = :parameter
-        AND quality = 0
         AND value > 0
         AND ${filter}
     ) d
@@ -58,11 +63,11 @@ function gaugeSql(truncate, filter) {
     SELECT date_trunc('${truncate}', timestamp AT TIME ZONE 'Asia/Jakarta') AS period,
            ROUND(CAST(AVG(value) AS numeric), 4) AS total,
            ROUND(CAST(MIN(value) AS numeric), 4) AS min_value,
-           ROUND(CAST(MAX(value) AS numeric), 4) AS max_value
+           ROUND(CAST(MAX(value) AS numeric), 4) AS max_value,
+           SUM(CASE WHEN quality <> 0 THEN 1 ELSE 0 END) AS suspect_count
     FROM readings
     WHERE device_id = :device_id
       AND parameter = :parameter
-      AND quality = 0
       AND ${filter}
     GROUP BY period ORDER BY period`;
 }
