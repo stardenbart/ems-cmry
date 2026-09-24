@@ -22,6 +22,7 @@ import SettingsEnergyConversion from './pages/SettingsEnergyConversion';
 import SettingsAlarm from './pages/SettingsAlarm';
 import SettingsAlarmRules from './pages/SettingsAlarmRules';
 import SettingsRoles from './pages/SettingsRoles';
+import SettingsAssets from './pages/SettingsAssets';
 import SettingsShift from './pages/SettingsShift';
 import SettingsUsers from './pages/SettingsUsers';
 import SettingsSMTP from './pages/SettingsSMTP';
@@ -52,6 +53,7 @@ function AppRoutes() {
       <Route path="/dashboard/besaran" element={<ProtectedRoute><DashboardByKind /></ProtectedRoute>} />
       <Route path="/settings/alarm-rules" element={<ProtectedRoute><SettingsAlarmRules /></ProtectedRoute>} />
       <Route path="/settings/roles" element={<ProtectedRoute><SettingsRoles /></ProtectedRoute>} />
+      <Route path="/settings/assets" element={<ProtectedRoute><SettingsAssets /></ProtectedRoute>} />
       <Route path="/settings/shift" element={<ProtectedRoute><SettingsShift /></ProtectedRoute>} />
       <Route path="/realtime/device" element={<ProtectedRoute><RealtimeDevice /></ProtectedRoute>} />
       <Route path="/realtime/sld" element={<ProtectedRoute><RealtimeDevice /></ProtectedRoute>} />
