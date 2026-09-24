@@ -20,7 +20,7 @@ function Login() {
       const u = await login(username, password);
       navigate(u && u.must_change_password ? '/change-password?required=1' : '/realtime/device');
     } catch (err) {
-      setError(err.response?.data?.error || 'Login gagal');
+      setError(err.response?.data?.error || 'Login failed');
     } finally {
       setLoading(false);
     }

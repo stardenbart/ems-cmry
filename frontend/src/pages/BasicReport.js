@@ -71,7 +71,7 @@ function BasicReport() {
             ))}
             {data.length === 0 && (
               <tr><td colSpan="4" style={{ textAlign: 'center', padding: 40, color: '#999' }}>
-                Belum ada data. Pilih filter lalu klik Generate Report.
+                No data yet. Choose the filters, then click Generate Report.
               </td></tr>
             )}
           </tbody>

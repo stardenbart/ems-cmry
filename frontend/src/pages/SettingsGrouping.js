@@ -36,7 +36,7 @@ function SettingsGrouping() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Yakin hapus group ini?')) return;
+    if (!window.confirm('Delete this group?')) return;
     await api.delete(`/settings/groups/${id}`);
     fetchData();
   };

@@ -29,7 +29,7 @@ function DashboardPower() {
       <h2 className="page-title">Power Dashboard</h2>
       <div className="card">
         <div className="toolbar">
-          <DeviceSelector value={deviceId} onChange={setDeviceId} label="Pilih Perangkat" />
+          <DeviceSelector value={deviceId} onChange={setDeviceId} label="Select Device" />
           <div className="form-group">
             <label>Start Date</label>
             <input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} />

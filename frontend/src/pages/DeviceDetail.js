@@ -21,8 +21,8 @@ const RANGE = [
 ];
 
 const LABEL_KIND = {
-  energy: 'Energi', power: 'Daya Aktif', reactive_power: 'Daya Reaktif',
-  apparent_power: 'Daya Semu', current: 'Arus', voltage: 'Tegangan',
+  energy: 'Energy', power: 'Active Power', reactive_power: 'Reactive Power',
+  apparent_power: 'Apparent Power', current: 'Current', voltage: 'Voltage',
   frequency: 'Frekuensi', power_factor: 'Power Factor', thd: 'THD',
   temperature: 'Suhu', pressure: 'Tekanan', flow: 'Aliran', other: 'Lainnya',
 };

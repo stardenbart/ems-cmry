@@ -9,7 +9,7 @@ import { saveAs } from 'file-saver';
  */
 export function exportToExcel(data, filename = 'export') {
   if (!data || data.length === 0) {
-    alert('Tidak ada data untuk di-export');
+    alert('No data to export');
     return;
   }
 

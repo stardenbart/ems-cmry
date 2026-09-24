@@ -32,7 +32,7 @@ function DashboardEnergy() {
       <h2 className="page-title">Energy Dashboard</h2>
       <div className="card">
         <div className="toolbar">
-          <DeviceSelector value={deviceId} onChange={setDeviceId} label="Pilih Perangkat" />
+          <DeviceSelector value={deviceId} onChange={setDeviceId} label="Select Device" />
           <div className="form-group">
             <label>Time Range</label>
             <select className="selector-select" value={range} onChange={(e) => setRange(e.target.value)}>

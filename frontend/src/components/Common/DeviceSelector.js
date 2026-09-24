@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../api/axios';
 
-function DeviceSelector({ value, onChange, label = 'Pilih Perangkat' }) {
+function DeviceSelector({ value, onChange, label = 'Select Device' }) {
   const [devices, setDevices] = useState([]);
 
   useEffect(() => {
@@ -18,7 +18,7 @@ function DeviceSelector({ value, onChange, label = 'Pilih Perangkat' }) {
         value={value || ''}
         onChange={(e) => onChange(parseInt(e.target.value))}
       >
-        <option value="">-- Pilih --</option>
+        <option value="">-- Select --</option>
         {devices.map((d) => (
           <option key={d.id} value={d.id}>{d.name}</option>
         ))}

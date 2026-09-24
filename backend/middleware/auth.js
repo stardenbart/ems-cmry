@@ -5,7 +5,7 @@ require('dotenv').config();
 function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Token diperlukan' });
+    return res.status(401).json({ error: 'Please log in' });
   }
 
   const token = authHeader.split(' ')[1];
@@ -31,7 +31,7 @@ function authenticate(req, res, next) {
 
     next();
   } catch (err) {
-    return res.status(401).json({ error: 'Token tidak valid atau sudah expired' });
+    return res.status(401).json({ error: 'Session expired, please log in again' });
   }
 }
 
@@ -39,10 +39,10 @@ function authenticate(req, res, next) {
 function authorize(...allowedLevels) {
   return (req, res, next) => {
     if (!req.user) {
-      return res.status(401).json({ error: 'Tidak terautentikasi' });
+      return res.status(401).json({ error: 'Not logged in' });
     }
     if (!allowedLevels.includes(req.user.level)) {
-      return res.status(403).json({ error: 'Akses ditolak. Level Anda tidak memiliki izin.' });
+      return res.status(403).json({ error: 'Access denied for your user level' });
     }
     next();
   };

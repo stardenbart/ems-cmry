@@ -14,8 +14,8 @@ const RANGE = [
 ];
 
 const LABEL_KIND = {
-  energy: 'Energi', power: 'Daya Aktif', reactive_power: 'Daya Reaktif',
-  apparent_power: 'Daya Semu', current: 'Arus', voltage: 'Tegangan',
+  energy: 'Energy', power: 'Active Power', reactive_power: 'Reactive Power',
+  apparent_power: 'Apparent Power', current: 'Current', voltage: 'Voltage',
   frequency: 'Frekuensi', power_factor: 'Power Factor', thd: 'THD',
   temperature: 'Suhu', pressure: 'Tekanan', flow: 'Aliran', other: 'Lainnya',
 };
@@ -110,7 +110,7 @@ function Overview() {
 
           {data.summary.length === 0 ? (
             <div className="card" style={{ padding: 20, color: '#95a5a6' }}>
-              Belum ada data pada rentang ini.
+              No data in this range yet.
             </div>
           ) : (
             <div className="rt-grid-4">
@@ -125,7 +125,7 @@ function Overview() {
                   }}
                   value={s.value}
                   suspect={s.suspectCount > 0}
-                  subtitle={`${s.agg === 'counter' ? 'total' : 'rata-rata'} dari ${s.deviceCount} sumber`}
+                  subtitle={`${s.agg === 'counter' ? 'total' : 'average'} of ${s.deviceCount} source${s.deviceCount === 1 ? '' : 's'}`}
                 />
               ))}
             </div>

@@ -168,7 +168,7 @@ function SettingsDataMapping() {
       const isi = JSON.parse(await berkas.text());
       await api.post('/settings/device-types/import', { ...isi, overwrite: true });
       muat();
-      setPesan(`template "${isi.name}" berhasil diimpor`);
+      setPesan(`template "${isi.name}" imported`);
     } catch (e) {
       const d = e.response?.data;
       setPesan(d?.errors ? `${d.error}: ${d.errors.slice(0, 3).join('; ')}` : (d?.error || 'invalid file'));
@@ -276,7 +276,7 @@ function SettingsDataMapping() {
                           <input type="checkbox" checked={p.featured === true} onChange={(e) => ubahParam(i, 'featured', e.target.checked)} />
                         </td>
                         <td style={{ whiteSpace: 'nowrap' }}>
-                          <button type="button" onClick={() => bacaSekarang(i)} title="baca register ini dari perangkat"
+                          <button type="button" onClick={() => bacaSekarang(i)} title="read this register from the device now"
                             style={{ fontSize: 11, padding: '2px 7px', cursor: 'pointer', marginRight: 3 }}>Read</button>
                           <button type="button" onClick={() => setRinci((r) => ({ ...r, [i]: !r[i] }))}
                             style={{ fontSize: 11, padding: '2px 7px', cursor: 'pointer', marginRight: 3 }}>
@@ -363,7 +363,7 @@ function SettingsDataMapping() {
                 + Add parameter
               </button>
               <span style={{ fontSize: 12, color: '#7f8c8d' }}>
-                {form.params.length} baris — tidak ada batas jumlah
+                {form.params.length} rows — no limit on the number of parameters
               </span>
               <button type="submit" className="btn btn-primary" style={{ marginLeft: 'auto' }}>
                 {editId ? 'Save changes' : 'Save'}

@@ -85,7 +85,7 @@ function SettingsAlarm() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Yakin hapus alarm ini?')) return;
+    if (!window.confirm('Delete this alarm?')) return;
     await api.delete(`/alarms/config/${id}`);
     fetchData();
   };
@@ -109,7 +109,7 @@ function SettingsAlarm() {
             <div className="form-group">
               <label>Device</label>
               <select value={form.device_id} onChange={(e) => setForm({ ...form, device_id: e.target.value })} required>
-                <option value="">-- Pilih Device --</option>
+                <option value="">-- Select Device --</option>
                 {devices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </div>

@@ -36,7 +36,7 @@ function SettingsUsers() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Yakin hapus user ini?')) return;
+    if (!window.confirm('Delete this user?')) return;
     await api.delete(`/settings/users/${id}`);
     fetchUsers();
   };

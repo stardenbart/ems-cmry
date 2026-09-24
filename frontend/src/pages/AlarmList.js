@@ -26,7 +26,7 @@ function AlarmList() {
       await api.put(`/alarms/logs/${id}/acknowledge`);
       fetchLogs();
     } catch (err) {
-      alert(err.response?.data?.error || 'Gagal acknowledge');
+      alert(err.response?.data?.error || 'Failed to acknowledge');
     }
   };
 
@@ -65,7 +65,7 @@ function AlarmList() {
               </tr>
             ))}
             {logs.length === 0 && (
-              <tr><td colSpan="5" style={{ textAlign: 'center', padding: 40, color: '#999' }}>Tidak ada alarm</td></tr>
+              <tr><td colSpan="5" style={{ textAlign: 'center', padding: 40, color: '#999' }}>No alarms</td></tr>
             )}
           </tbody>
         </table>

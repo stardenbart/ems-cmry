@@ -10,17 +10,17 @@ router.post('/login', async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
-      return res.status(400).json({ error: 'Username dan password diperlukan' });
+      return res.status(400).json({ error: 'Username and password are required' });
     }
 
     const user = await User.findOne({ where: { username } });
     if (!user) {
-      return res.status(401).json({ error: 'Username atau password salah' });
+      return res.status(401).json({ error: 'Wrong username or password' });
     }
 
     const isValid = await user.validatePassword(password);
     if (!isValid) {
-      return res.status(401).json({ error: 'Username atau password salah' });
+      return res.status(401).json({ error: 'Wrong username or password' });
     }
 
     res.json(sesi(user));

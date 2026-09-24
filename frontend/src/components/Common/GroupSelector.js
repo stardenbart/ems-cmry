@@ -12,13 +12,13 @@ function GroupSelector({ value, onChange }) {
 
   return (
     <div className="selector-container">
-      <label className="selector-label">Pilih Grup</label>
+      <label className="selector-label">Select Group</label>
       <select
         className="selector-select"
         value={value || ''}
         onChange={(e) => onChange(parseInt(e.target.value))}
       >
-        <option value="">-- Pilih --</option>
+        <option value="">-- Select --</option>
         {groups.map((g) => (
           <option key={g.id} value={g.id}>{g.name}</option>
         ))}

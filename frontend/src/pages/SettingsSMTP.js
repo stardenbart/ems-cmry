@@ -16,18 +16,18 @@ function SettingsSMTP() {
     e.preventDefault();
     try {
       await api.put('/settings/smtp', form);
-      setMessage('SMTP berhasil disimpan');
+      setMessage('SMTP settings saved');
       setTimeout(() => setMessage(''), 3000);
     } catch (err) { alert(err.response?.data?.error || 'Error'); }
   };
 
   const handleTest = async () => {
-    if (!testEmail) return alert('Masukkan email penerima untuk testing');
+    if (!testEmail) return alert('Enter a recipient email for the test');
     try {
       const res = await api.post('/settings/smtp/test', { email: testEmail });
       setMessage(res.data.message);
       setTimeout(() => setMessage(''), 5000);
-    } catch (err) { alert(err.response?.data?.error || 'Test gagal'); }
+    } catch (err) { alert(err.response?.data?.error || 'Test failed'); }
   };
 
   return (

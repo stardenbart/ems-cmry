@@ -9,7 +9,7 @@ function AlarmReport() {
   const [data, setData] = useState([]);
 
   const generate = async () => {
-    if (!startDate || !endDate) return alert('Pilih tanggal mulai dan akhir');
+    if (!startDate || !endDate) return alert('Select a start and end date');
     try {
       const res = await api.get('/reports/alarm', { params: { start: startDate, end: endDate } });
       setData(res.data);
@@ -48,7 +48,7 @@ function AlarmReport() {
               </tr>
             ))}
             {data.length === 0 && (
-              <tr><td colSpan="5" style={{ textAlign: 'center', padding: 40, color: '#999' }}>Belum ada data</td></tr>
+              <tr><td colSpan="5" style={{ textAlign: 'center', padding: 40, color: '#999' }}>No data yet</td></tr>
             )}
           </tbody>
         </table>
