@@ -90,6 +90,7 @@ const sequelizeAR = require('../config/database');
 const { QueryTypes: QT } = require('sequelize');
 const auditAR = require('../services/audit');
 const { OPERATOR } = require('../services/alarmRules');
+const { reloadRules } = require('../services/alarmEngine');
 
 router.get('/rules', authenticate, async (req, res) => {
   try {
@@ -132,6 +133,7 @@ router.post('/rules', authenticate, authorize('admin', 'maintenance'), async (re
         recipients: b.recipients || null, email_template: b.email_template || 'default',
       }, type: QT.SELECT,
     });
+    reloadRules();
     await auditAR.record(req, { action: 'create', entity: 'alarm_rule', entityId: row.id, after: row });
     res.status(201).json(row);
   } catch (err) { res.status(400).json({ error: err.message }); }
@@ -171,6 +173,7 @@ router.put('/rules/:id', authenticate, authorize('admin', 'maintenance'), async 
         email_template: req.body.email_template ?? null,
       }, type: QT.SELECT,
     });
+    reloadRules();
     await auditAR.record(req, { action: 'update', entity: 'alarm_rule', entityId: row.id, before, after: row });
     res.json(row);
   } catch (err) { res.status(400).json({ error: err.message }); }
@@ -179,6 +182,7 @@ router.put('/rules/:id', authenticate, authorize('admin', 'maintenance'), async 
 router.delete('/rules/:id', authenticate, authorize('admin'), async (req, res) => {
   try {
     await sequelizeAR.query('DELETE FROM alarm_rules WHERE id = :id', { replacements: { id: req.params.id } });
+    reloadRules();
     await auditAR.record(req, { action: 'delete', entity: 'alarm_rule', entityId: req.params.id });
     res.json({ message: 'Aturan dihapus' });
   } catch (err) { res.status(500).json({ error: err.message }); }
