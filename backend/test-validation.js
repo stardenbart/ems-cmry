@@ -26,7 +26,10 @@ assert.strictEqual(rangeQuality({ min: 0, max: 1e12 }, 2.668e13), SUSPECT, 'ener
 assert.strictEqual(rangeQuality({ min: 0, max: 5000 }, null), SUSPECT, 'null dianggap suspect');
 assert.strictEqual(rangeQuality(null, 123), GOOD, 'tanpa metadata dilewati');
 
-// ── Koherensi: data live 24 Sep 2026, yang memang tidak koheren ─────────────
+// ── Koherensi: data live 24 Sep 2026 ────────────────────────────────────────
+// Pindaian register membuktikan data ini SAH. Daya per fasa masing-masing
+// koheren dan jumlahnya cocok dengan total; Apparent Power Total sekadar jumlah
+// aritmetik, bukan vektor. Jadi tidak boleh ada satu pun penanda di sini.
 const LIVE = {
   'Current A': 1592.4963, 'Current B': 1711.9612, 'Current C': 1764.2462,
   'Current N': 3180.4087, 'Current Avg': 1692.1346,
@@ -38,10 +41,8 @@ const LIVE = {
 };
 
 const issues = coherenceIssues(PARAMS, LIVE);
-const rules = issues.map((i) => i.rule);
-assert.ok(rules.includes('PQ_far_below_S'), 'P dan Q tidak sejalan dengan S harus tertangkap');
-assert.ok(rules.includes('IN_gt_phase'), 'arus netral melebihi arus fasa harus tertangkap');
-assert.ok(!rules.includes('S_vs_VI'), 'S memang cocok dengan akar-3 x V x I, jangan ditandai');
+assert.deepStrictEqual(issues, [],
+  'beban tiga fasa tak seimbang adalah kondisi sah, tidak boleh ditandai: ' + JSON.stringify(issues));
 
 // ── Koherensi: data yang benar-benar konsisten ──────────────────────────────
 const V = 400, I = 1000;
@@ -66,6 +67,21 @@ assert.ok(Object.values(q).every((v) => v === GOOD), 'semua good pada data sehat
 const ARUS_SALAH = { ...SEHAT, 'Current Avg': I * 1.5 };
 assert.ok(coherenceIssues(PARAMS, ARUS_SALAH).some((i) => i.rule === 'S_vs_VI'),
   'arus salah baca harus tertangkap lewat S vs akar-3 x V x I');
+
+// Yang benar-benar mustahil tetap harus tertangkap.
+const PQ_MUSTAHIL = { ...SEHAT, 'Apparent Power Total': 100 };  // S lebih kecil dari P
+assert.ok(coherenceIssues(PARAMS, PQ_MUSTAHIL).some((i) => i.rule === 'P_gt_S'),
+  'P melebihi S harus tertangkap');
+
+const NETRAL_MUSTAHIL = { ...SEHAT, 'Current N': 9999 };  // melebihi jumlah ketiga fasa
+assert.ok(coherenceIssues(PARAMS, NETRAL_MUSTAHIL).some((i) => i.rule === 'IN_gt_sum'),
+  'arus netral melebihi jumlah ketiga fasa harus tertangkap');
+
+// Arus netral besar pada fasa yang seimbang besarnya TIDAK boleh ditandai:
+// sudut fasa bisa sangat berbeda dan harmonisa triplen menjumlah di netral.
+const NETRAL_BESAR = { ...SEHAT, 'Current N': 2500 };
+assert.ok(!coherenceIssues(PARAMS, NETRAL_BESAR).some((i) => i.rule.startsWith('IN_')),
+  'arus netral besar tapi masih di bawah jumlah fasa adalah sah');
 
 // Tanpa parameter yang relevan, aturan dilewati tanpa error.
 assert.deepStrictEqual(coherenceIssues([], {}), [], 'tanpa parameter tidak error');
