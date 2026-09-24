@@ -5,6 +5,7 @@ import Layout from './components/Layout/Layout';
 import ErrorBoundary from './components/Common/ErrorBoundary';
 import Login from './pages/Login';
 import Overview from './pages/Overview';
+import DeviceDetail from './pages/DeviceDetail';
 import RealtimeDevice from './pages/RealtimeDevice';
 import DashboardEnergy from './pages/DashboardEnergy';
 import DashboardComparison from './pages/DashboardComparison';
@@ -43,6 +44,7 @@ function AppRoutes() {
 
       {/* Realtime */}
       <Route path="/overview" element={<ProtectedRoute><Overview /></ProtectedRoute>} />
+      <Route path="/device" element={<ProtectedRoute><DeviceDetail /></ProtectedRoute>} />
       <Route path="/realtime/device" element={<ProtectedRoute><RealtimeDevice /></ProtectedRoute>} />
       <Route path="/realtime/sld" element={<ProtectedRoute><RealtimeDevice /></ProtectedRoute>} />
 
@@ -75,8 +77,8 @@ function AppRoutes() {
       <Route path="/settings/smtp" element={<ProtectedRoute><SettingsSMTP /></ProtectedRoute>} />
 
       {/* Default */}
-      <Route path="/" element={<Navigate to="/realtime/device" />} />
-      <Route path="*" element={<Navigate to="/realtime/device" />} />
+      <Route path="/" element={<Navigate to="/overview" />} />
+      <Route path="*" element={<Navigate to="/overview" />} />
     </Routes>
   );
 }

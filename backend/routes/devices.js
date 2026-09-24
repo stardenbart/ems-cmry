@@ -1,6 +1,8 @@
 const router = require('express').Router();
 const { Device, DataGateway, DeviceType, Group } = require('../models');
 const { authenticate, authorize } = require('../middleware/auth');
+const { QueryTypes } = require('sequelize');
+const sequelize = require('../config/database');
 const { readDeviceNow, requestReload, compareReadStrategies } = require('../services/modbusReader');
 
 // GET /api/devices - List semua devices
@@ -131,6 +133,48 @@ router.post('/:id/verify-blockread', authenticate, authorize('admin', 'maintenan
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
+});
+
+// GET /api/devices/:id/parameters
+// Metadata parameter untuk merakit tampilan. Halaman device memakai ini supaya
+// panel dipilih dari kind dan agg, bukan dari nama parameter yang ditulis di kode.
+// Terbuka untuk semua level karena hanya berisi keterangan, bukan pengaturan.
+router.get('/:id/parameters', authenticate, async (req, res) => {
+  try {
+    const [row] = await sequelize.query(`
+      SELECT d.id, d.name AS device_name, d.address, d.role, d.asset_node_id,
+             dt.name AS type_name, dt.params
+        FROM devices d
+        JOIN device_types dt ON dt.id = d.device_type_id
+       WHERE d.id = :id`, { replacements: { id: req.params.id }, type: QueryTypes.SELECT });
+
+    if (!row) return res.status(404).json({ error: 'Device tidak ditemukan' });
+
+    const params = typeof row.params === 'string' ? JSON.parse(row.params) : (row.params || []);
+
+    res.json({
+      id: row.id,
+      name: row.device_name,
+      address: row.address,
+      role: row.role,
+      assetNodeId: row.asset_node_id,
+      typeName: row.type_name,
+      parameters: params
+        .map((p) => ({
+          name: p.name,
+          kind: p.kind || 'other',
+          unit: p.unit || '-',
+          agg: p.agg || 'gauge',
+          precision: p.precision === undefined ? 2 : p.precision,
+          min: p.min === undefined ? null : p.min,
+          max: p.max === undefined ? null : p.max,
+          featured: p.featured === true,
+          order: p.order === undefined ? 999 : p.order,
+          saved: p.save !== false,
+        }))
+        .sort((a, b) => (b.featured - a.featured) || (a.order - b.order) || a.name.localeCompare(b.name)),
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 module.exports = router;

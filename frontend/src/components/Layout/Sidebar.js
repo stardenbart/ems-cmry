@@ -31,6 +31,10 @@ function Sidebar({ isOpen, onClose }) {
       levels: ['admin','maintenance','operator','viewer'],
     },
     {
+      label: 'Device Monitor', key: 'device-monitor', path: '/device',
+      levels: ['admin','maintenance','operator','viewer'],
+    },
+    {
       label: 'Realtime Diagram', key: 'realtime', path: '/realtime/device',
       levels: ['admin','maintenance','operator','viewer'],
     },
