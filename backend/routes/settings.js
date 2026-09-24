@@ -5,6 +5,7 @@ const { sendTestEmail } = require('../services/emailService');
 const { requestReload, probeRegister } = require('../services/modbusReader');
 const { invalidateUnits } = require('../services/aggregation');
 const audit = require('../services/audit');
+const template = require('../services/deviceTemplate');
 
 // ==================== DATA GATEWAY ====================
 
@@ -339,6 +340,56 @@ router.get('/audit', authenticate, authorize('admin'), async (req, res) => {
     });
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/settings/device-types/:id/export — unduh template sebagai JSON
+router.get('/device-types/:id/export', authenticate, authorize('admin', 'maintenance'), async (req, res) => {
+  try {
+    const dt = await DeviceType.findByPk(req.params.id);
+    if (!dt) return res.status(404).json({ error: 'Device type tidak ditemukan' });
+    const berkas = template.toExport(dt);
+    const nama = String(dt.name).replace(/[^a-zA-Z0-9_-]/g, '_');
+    res.setHeader('Content-Disposition', `attachment; filename="template-${nama}.json"`);
+    res.json(berkas);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/settings/device-types/import — impor template
+// Body: isi berkas JSON, opsional { overwrite: true } untuk menimpa yang senama.
+router.post('/device-types/import', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const { overwrite, ...raw } = req.body || {};
+    const hasil = template.validateImport(raw);
+    if (!hasil.ok) return res.status(400).json({ error: 'Template tidak sah', errors: hasil.errors });
+
+    const ada = await DeviceType.findOne({ where: { name: hasil.value.name } });
+    if (ada && !overwrite) {
+      return res.status(409).json({
+        error: `Device type "${hasil.value.name}" sudah ada`,
+        hint: 'kirim ulang dengan overwrite: true untuk menimpa',
+      });
+    }
+
+    let dt;
+    if (ada) {
+      const before = { name: ada.name, params: ada.params };
+      await ada.update(hasil.value);
+      dt = ada;
+      await audit.record(req, {
+        action: 'update', entity: 'device_type', entityId: dt.id,
+        before, after: { name: dt.name, params: dt.params },
+      });
+    } else {
+      dt = await DeviceType.create(hasil.value);
+      await audit.record(req, {
+        action: 'create', entity: 'device_type', entityId: dt.id,
+        after: { name: dt.name, params: dt.params },
+      });
+    }
+
+    requestReload();
+    res.status(ada ? 200 : 201).json({ id: dt.id, name: dt.name, paramCount: hasil.value.params.length });
+  } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
 module.exports = router;
