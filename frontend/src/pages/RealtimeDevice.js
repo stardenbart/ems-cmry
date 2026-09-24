@@ -5,7 +5,7 @@ import MetricPanel, { formatNilai, tampilSatuan } from '../components/Common/Met
 import KpiCardEditor from '../components/Common/KpiCardEditor';
 import api from '../api/axios';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar,
 } from 'recharts';
 import { BsLightningChargeFill } from 'react-icons/bs';
@@ -33,7 +33,63 @@ function EnergyCard({ title, value, unit }) {
   );
 }
 
-const WARNA_TREN = ['#e74c3c', '#1B4F72', '#27ae60', '#e67e22', '#8e44ad', '#16a085', '#2c3e50', '#d35400'];
+const WARNA_TREN = ['#e74c3c', '#1B4F72', '#27ae60', '#e67e22'];
+const MAKS_GRAFIK = 4;
+const TITIK_GRAFIK = 60; // 60 titik x 3 detik = 3 menit, sama seperti grafik daya sebelumnya
+
+// Grafik yang ditampilkan. Kalau user sudah pernah memilih (ada parameter
+// dengan `chart` bernilai true/false), pilihannya yang dipakai. Kalau belum,
+// default: gauge featured pertama beserta yang satuannya sama — untuk PM2200
+// itu daya aktif saja seperti dulu, untuk perekam suhu empat kanal pertama.
+export function pilihGrafik(params) {
+  const list = params || [];
+  if (list.some((p) => p.chart === true || p.chart === false)) {
+    return list.filter((p) => p.chart === true).slice(0, MAKS_GRAFIK);
+  }
+  const g = list.filter((p) => p.featured && p.agg !== 'counter');
+  return g.length ? g.filter((p) => p.unit === g[0].unit).slice(0, MAKS_GRAFIK) : [];
+}
+
+// Satu grafik per parameter. Gaya dan animasinya mengikuti grafik daya lama
+// (area monotone dengan animasi bawaan recharts) yang terasa mengalir.
+function LiveChart({ param, data, color, wide }) {
+  const judul = param.label || param.name;
+  const satuan = tampilSatuan(param.unit);
+  const gid = `grad-${param.name.replace(/[^a-zA-Z0-9]/g, '')}`;
+  const terakhir = data.length ? data[data.length - 1][param.name] : null;
+  return (
+    <div className="card" style={{ marginBottom: 0, gridColumn: wide ? '1 / -1' : undefined }}>
+      <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+        Live · last 3 minutes
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '0 0 12px' }}>
+        <h3 style={{ margin: 0, fontSize: 17, color: '#1B4F72' }}>
+          {judul}{satuan ? ` (${satuan})` : ''}
+        </h3>
+        <span style={{ marginLeft: 'auto', fontSize: 16, fontWeight: 700, color }}>
+          {formatNilai(terakhir, param.precision)}{satuan ? ` ${satuan}` : ''}
+        </span>
+      </div>
+      <ResponsiveContainer width="100%" height={230}>
+        <AreaChart data={data}>
+          <defs>
+            <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={color} stopOpacity={0.35} />
+              <stop offset="95%" stopColor={color} stopOpacity={0.03} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+          <XAxis dataKey="time" fontSize={11} tick={{ fill: '#7f8c8d' }} interval="preserveStartEnd" minTickGap={40} />
+          <YAxis fontSize={11} tick={{ fill: '#7f8c8d' }} domain={['auto', 'auto']} width={56}
+            tickFormatter={(v) => formatNilai(v, param.precision)} />
+          <Tooltip formatter={(v) => [`${formatNilai(v, param.precision)}${satuan ? ` ${satuan}` : ''}`, judul]} />
+          <Area type="monotone" dataKey={param.name} stroke={color} fill={`url(#${gid})`}
+            strokeWidth={2} dot={false} connectNulls />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
 
 function RealtimeDevice() {
   const [selectedDevice, setSelectedDevice] = useState(null);
@@ -133,17 +189,24 @@ function RealtimeDevice() {
   // ── Ambil data device dari WebSocket ──────────────────────────────────────
   const deviceData = selectedDevice ? (wsData[selectedDevice] || {}) : {};
 
-  // ── Kurva live, dipilih dari metadata ────────────────────────────────────
-  // Parameter featured bertipe gauge yang satuannya sama dengan yang pertama,
-  // supaya satu sumbu Y tidak mencampur kW dengan V atau derajat. Untuk PM2200
-  // itu daya aktif; untuk perekam suhu itu seluruh kanal sekaligus.
+  // ── Grafik live, dipilih dari metadata ───────────────────────────────────
   const params = useMemo(() => (paramMeta ? paramMeta.parameters : []), [paramMeta]);
   const punyaEnergi = params.some((p) => p.kind === 'energy');
-  const trendParams = useMemo(() => {
-    const g = params.filter((p) => p.featured && p.agg !== 'counter');
-    return g.length ? g.filter((p) => p.unit === g[0].unit).slice(0, 8) : [];
-  }, [params]);
-  const trendUnit = trendParams.length ? tampilSatuan(trendParams[0].unit) : '';
+  const chartParams = useMemo(() => pilihGrafik(params), [params]);
+
+  // Statistik kanal hanya untuk device non-energi: seluruh gauge featured,
+  // terlepas dari mana yang dipilih sebagai grafik.
+  const statParams = useMemo(
+    () => (punyaEnergi ? [] : params.filter((p) => p.featured && p.agg !== 'counter')),
+    [params, punyaEnergi]);
+
+  // Satu buffer untuk grafik dan statistik, berkunci `name` (bukan label,
+  // supaya mengganti judul kartu tidak memutus kurva yang sedang berjalan).
+  const dilacak = useMemo(() => {
+    const m = {};
+    [...chartParams, ...statParams].forEach((x) => { m[x.name] = x; });
+    return Object.values(m);
+  }, [chartParams, statParams]);
 
   useEffect(() => { setTrend([]); }, [selectedDevice]);
 
@@ -151,23 +214,24 @@ function RealtimeDevice() {
   // sebagai pemicu satu titik baru.
   const snapshot = selectedDevice ? wsData[selectedDevice] : null;
   useEffect(() => {
-    if (!snapshot || trendParams.length === 0) return;
+    if (!snapshot || dilacak.length === 0) return;
     const titik = { time: new Date().toLocaleTimeString('en-GB') };
-    trendParams.forEach((p) => {
-      const v = Number(snapshot[p.name]);
-      titik[p.label || p.name] = Number.isFinite(v) ? v : null;
+    dilacak.forEach((x) => {
+      const v = Number(snapshot[x.name]);
+      titik[x.name] = Number.isFinite(v) ? v : null;
     });
-    // 120 titik x 3 detik = 6 menit terakhir.
+    // 120 titik x 3 detik = 6 menit untuk statistik; grafik memakai 60 terakhir.
     setTrend((prev) => [...prev, titik].slice(-120));
-  }, [snapshot, trendParams]);
+  }, [snapshot, dilacak]);
+
+  const trendGrafik = useMemo(() => trend.slice(-TITIK_GRAFIK), [trend]);
 
   // Statistik per kanal selama jendela live: yang biasanya dicari pada
   // pemantauan suhu — nilai di luar batas, laju naik/turun (ramp), dan
   // selisih antar titik ukur yang seharusnya bergerak bersama.
-  const statistik = useMemo(() => trendParams.map((p) => {
-    const k = p.label || p.name;
-    const nilai = trend.map((r) => r[k]).filter((v) => v !== null && v !== undefined);
-    if (nilai.length === 0) return { p, n: 0 };
+  const statistik = useMemo(() => statParams.map((x) => {
+    const nilai = trend.map((r) => r[x.name]).filter((v) => v !== null && v !== undefined);
+    if (nilai.length === 0) return { p: x, n: 0 };
     const min = Math.min(...nilai);
     const max = Math.max(...nilai);
     const avg = nilai.reduce((s, v) => s + v, 0) / nilai.length;
@@ -175,11 +239,13 @@ function RealtimeDevice() {
     const ekor = nilai.slice(-20);
     const menit = ((ekor.length - 1) * 3) / 60;
     const laju = menit > 0 ? (ekor[ekor.length - 1] - ekor[0]) / menit : null;
-    return { p, n: nilai.length, now: nilai[nilai.length - 1], min, max, avg, laju };
-  }), [trend, trendParams]);
+    return { p: x, n: nilai.length, now: nilai[nilai.length - 1], min, max, avg, laju };
+  }), [trend, statParams]);
 
   const kiniSemua = statistik.filter((s) => s.n > 0).map((s) => s.now);
-  const sebaran = kiniSemua.length > 1 ? Math.max(...kiniSemua) - Math.min(...kiniSemua) : null;
+  const statUnit = statParams.length ? tampilSatuan(statParams[0].unit) : '';
+  const satuSatuan = statParams.every((x) => x.unit === (statParams[0] || {}).unit);
+  const sebaran = satuSatuan && kiniSemua.length > 1 ? Math.max(...kiniSemua) - Math.min(...kiniSemua) : null;
 
   // ── Hitung energyToday ────────────────────────────────────────────────────
   let energyToday = null;
@@ -234,7 +300,7 @@ function RealtimeDevice() {
             <DeviceSelector value={selectedDevice} onChange={setSelectedDevice} label="Select Device" />
           </div>
           <button className="btn btn-outline btn-sm" onClick={() => setShowEditor(!showEditor)}>
-            {showEditor ? 'Close card settings' : 'Configure KPI cards'}
+            {showEditor ? 'Close settings' : 'Configure cards & charts'}
           </button>
         </div>
         {paramMeta ? (
@@ -249,6 +315,7 @@ function RealtimeDevice() {
           typeName={paramMeta.typeName}
           parameters={paramMeta.parameters}
           live={deviceData}
+          charts={chartParams.map((x) => x.name)}
           onClose={() => setShowEditor(false)}
           onSaved={() => { muatMeta(); setShowEditor(false); }}
         />
@@ -301,29 +368,13 @@ function RealtimeDevice() {
 
       </>) : null}
 
-      {/* Live trend of the featured parameters */}
-      {trendParams.length > 0 ? (
-        <div className="card" style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
-            Live · last 6 minutes
-          </div>
-          <h3 style={{ margin: '0 0 16px', fontSize: 18, color: '#1B4F72' }}>
-            {trendParams.length === 1 ? `${trendParams[0].label || trendParams[0].name} Trend` : 'Trend'}
-            {trendUnit ? ` (${trendUnit})` : ''}
-          </h3>
-          <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={trend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="time" fontSize={11} tick={{ fill: '#7f8c8d' }} interval="preserveStartEnd" />
-              <YAxis unit={trendUnit ? ` ${trendUnit}` : ''} fontSize={11} tick={{ fill: '#7f8c8d' }} domain={['auto', 'auto']} />
-              <Tooltip />
-              {trendParams.length > 1 ? <Legend wrapperStyle={{ fontSize: 11 }} /> : null}
-              {trendParams.map((p, i) => (
-                <Line key={p.name} type="monotone" dataKey={p.label || p.name}
-                  stroke={WARNA_TREN[i % WARNA_TREN.length]} strokeWidth={2} dot={false} isAnimationActive={false} />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
+      {/* Live charts: one per chosen parameter, at most 4 in a 2 x 2 grid */}
+      {chartParams.length > 0 ? (
+        <div className="rt-chart-grid">
+          {chartParams.map((x, i) => (
+            <LiveChart key={x.name} param={x} data={trendGrafik} color={WARNA_TREN[i % WARNA_TREN.length]}
+              wide={chartParams.length === 1 || (chartParams.length === 3 && i === 2)} />
+          ))}
         </div>
       ) : null}
 
@@ -334,7 +385,7 @@ function RealtimeDevice() {
             Channel statistics · live window
             {sebaran !== null ? (
               <span style={{ marginLeft: 12, textTransform: 'none', color: '#1B4F72' }}>
-                Spread between channels now: <strong>{formatNilai(sebaran, 1)} {trendUnit}</strong>
+                Spread between channels now: <strong>{formatNilai(sebaran, 1)} {statUnit}</strong>
               </span>
             ) : null}
           </div>

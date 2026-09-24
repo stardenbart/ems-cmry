@@ -349,3 +349,13 @@
     min-width: 500px;
   }
 }
+/* Live charts: max 4, 2 x 2 */
+.rt-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+  margin-bottom: 16px;
+}
+@media (max-width: 900px) {
+  .rt-chart-grid { grid-template-columns: 1fr; }
+}

@@ -1,19 +1,30 @@
 import React, { useState } from 'react';
 import api from '../../api/axios';
-import { formatNilai } from './MetricPanel';
+import { formatNilai, tampilSatuan } from './MetricPanel';
 
 // Shared KPI card editor, used by both Realtime Diagram and Device Monitor.
 //
 // Writes back into the device type metadata, so the layout follows the device
-// type rather than the page. Only `featured`, `label` and `order` are touched —
-// register address and everything else are copied through untouched.
+// type rather than the page. Only `featured`, `label`, `order` and — when the
+// page passes `charts` — `chart` are touched; register address and everything
+// else are copied through untouched.
+//
+// `charts` is the list of parameter names the page is charting right now. It
+// enables the Chart column, and seeds it so the editor opens showing what is
+// actually on screen, including the default choice for a type never configured.
+
+const MAX_CHARTS = 4;
 //
 // The display name lives in `label`, never in `name`: `name` is the key that
 // ties every row in `readings` to its parameter, so renaming it would cut the
 // history loose.
 
-function KpiCardEditor({ typeName, parameters, live, onSaved, onClose }) {
-  const [draft, setDraft] = useState(() => (parameters || []).map((p) => ({ ...p })));
+function KpiCardEditor({ typeName, parameters, live, charts, onSaved, onClose }) {
+  const withCharts = Array.isArray(charts);
+  const [draft, setDraft] = useState(() => (parameters || []).map((p) => ({
+    ...p,
+    chart: withCharts ? charts.includes(p.name) : p.chart,
+  })));
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -40,6 +51,9 @@ function KpiCardEditor({ typeName, parameters, live, onSaved, onClose }) {
           label: u.label ? u.label : undefined,
           order: u.order === '' || u.order === null || u.order === undefined
             ? p.order : Number(u.order),
+          // Explicit true/false once saved from a page with charts, so the
+          // page stops falling back to its default choice.
+          ...(withCharts ? { chart: u.chart === true } : {}),
         };
       });
 
@@ -53,12 +67,13 @@ function KpiCardEditor({ typeName, parameters, live, onSaved, onClose }) {
   };
 
   const shown = draft.filter((p) => p.featured).length;
+  const charted = draft.filter((p) => p.chart === true).length;
 
   return (
     <div className="card" style={{ marginBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
         <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase' }}>
-          KPI cards — {shown} shown
+          KPI cards — {shown} shown{withCharts ? ` · charts — ${charted} of ${MAX_CHARTS}` : ''}
         </div>
         <button className="btn btn-outline btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>
           Close
@@ -71,7 +86,8 @@ function KpiCardEditor({ typeName, parameters, live, onSaved, onClose }) {
         <table className="data-table" style={{ fontSize: 12 }}>
           <thead>
             <tr>
-              <th style={{ width: 60 }}>Show</th>
+              <th style={{ width: 60 }}>Card</th>
+              {withCharts ? <th style={{ width: 60 }}>Chart</th> : null}
               <th>Parameter</th>
               <th>Card title</th>
               <th style={{ width: 80 }}>Order</th>
@@ -85,9 +101,17 @@ function KpiCardEditor({ typeName, parameters, live, onSaved, onClose }) {
                   <input type="checkbox" checked={p.featured === true}
                     onChange={(e) => change(i, 'featured', e.target.checked)} />
                 </td>
+                {withCharts ? (
+                  <td style={{ textAlign: 'center' }}>
+                    <input type="checkbox" checked={p.chart === true}
+                      disabled={p.chart !== true && charted >= MAX_CHARTS}
+                      title={p.chart !== true && charted >= MAX_CHARTS ? `At most ${MAX_CHARTS} charts` : undefined}
+                      onChange={(e) => change(i, 'chart', e.target.checked)} />
+                  </td>
+                ) : null}
                 <td>
                   {p.name}
-                  <span style={{ color: '#95a5a6' }}> {p.unit && p.unit !== '-' ? `(${p.unit})` : ''}</span>
+                  <span style={{ color: '#95a5a6' }}> {tampilSatuan(p.unit) ? `(${tampilSatuan(p.unit)})` : ''}</span>
                   {p.saved === false ? (
                     <span style={{ color: '#e67e22', fontSize: 11 }}> · not stored</span>
                   ) : null}
@@ -113,7 +137,7 @@ function KpiCardEditor({ typeName, parameters, live, onSaved, onClose }) {
 
       <div style={{ marginTop: 12, display: 'flex', gap: 10, alignItems: 'center' }}>
         <button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>
-          {saving ? 'Saving…' : 'Save card layout'}
+          {saving ? 'Saving…' : withCharts ? 'Save cards & charts' : 'Save card layout'}
         </button>
         <span style={{ fontSize: 11, color: '#7f8c8d' }}>
           Saved on the device type, so it applies to every device of type {typeName}.

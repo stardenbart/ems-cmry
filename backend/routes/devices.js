@@ -170,6 +170,8 @@ router.get('/:id/parameters', authenticate, async (req, res) => {
           min: p.min === undefined ? null : p.min,
           max: p.max === undefined ? null : p.max,
           featured: p.featured === true,
+          // null = belum pernah diatur; halaman memakai pilihan default.
+          chart: p.chart === true ? true : p.chart === false ? false : null,
           order: p.order === undefined ? 999 : p.order,
           saved: p.save !== false,
         }))
