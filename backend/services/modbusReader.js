@@ -4,6 +4,7 @@ const { broadcastData } = require('../websocket/wsServer');
 const { checkAlarms } = require('./alarmChecker');
 const { markRead } = require('./watchdog');
 const { buildBlocks, dueAtCycle } = require('./modbusBlocks');
+const { terapkan } = require('./decode');
 
 const clients = {};
 let devices = [];
@@ -125,6 +126,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Dekode satu parameter dari kata-kata register miliknya.
 function decodeParam(param, words) {
+  return terapkan(decodeMentah(param, words), param);
+}
+
+// Dekode mentah dari register, sebelum penyesuaian conv_mode.
+function decodeMentah(param, words) {
   const dataType = (param.dataType || 'float32be').toLowerCase();
 
   if (dataType === 'int16') return readInt16(words);

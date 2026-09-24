@@ -33,6 +33,8 @@ function DeviceDetail() {
   const [range, setRange] = useState('today');
   const [series, setSeries] = useState(null);
   const [pesan, setPesan] = useState('');
+  const [aturKartu, setAturKartu] = useState(false);
+  const [draf, setDraf] = useState([]);
 
   const { data: wsData, isConnected } = useWebSocket();
 
@@ -77,6 +79,40 @@ function DeviceDetail() {
     }));
   }, [series, range]);
 
+  // Simpan susunan kartu kembali ke device type. Yang diubah hanya featured,
+  // label, dan order — sisanya disalin apa adanya supaya alamat register dan
+  // metadata lain tidak tersentuh.
+  const simpanKartu = async () => {
+    setPesan('');
+    try {
+      const dt = (await api.get('/settings/device-types')).data
+        .find((t) => t.name === meta.typeName);
+      if (!dt) { setPesan('device type tidak ditemukan'); return; }
+
+      const asli = typeof dt.params === 'string' ? JSON.parse(dt.params) : dt.params;
+      const ubah = {};
+      draf.forEach((p) => { ubah[p.name] = p; });
+
+      const params = asli.map((p) => {
+        const u = ubah[p.name];
+        if (!u) return p;
+        return {
+          ...p,
+          featured: u.featured === true,
+          label: u.label || undefined,
+          order: u.order === '' || u.order === null ? p.order : Number(u.order),
+        };
+      });
+
+      await api.put(`/settings/device-types/${dt.id}`, { params });
+      const r = await api.get(`/devices/${deviceId}/parameters`);
+      setMeta(r.data);
+      setAturKartu(false);
+    } catch (e) {
+      setPesan(e.response?.data?.error || 'gagal menyimpan susunan kartu');
+    }
+  };
+
   const utama = meta ? meta.parameters.filter((p) => p.featured) : [];
   const lainnya = meta ? meta.parameters.filter((p) => !p.featured) : [];
 
@@ -100,11 +136,66 @@ function DeviceDetail() {
 
       {pesan ? <div className="card" style={{ padding: 20, color: '#c0392b' }}>{pesan}</div> : null}
 
+      {/* Pengatur kartu KPI: pilih parameter mana yang tampil dan namanya apa */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <button onClick={() => { setDraf(meta ? meta.parameters.map((p) => ({ ...p })) : []); setAturKartu(!aturKartu); }}
+          style={{ fontSize: 12, padding: '5px 12px', cursor: 'pointer' }}>
+          {aturKartu ? 'Tutup pengaturan kartu' : 'Atur kartu KPI'}
+        </button>
+      </div>
+
+      {aturKartu ? (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', marginBottom: 10 }}>
+            Kartu KPI yang ditampilkan
+          </div>
+          <div className="table-responsive">
+            <table className="data-table" style={{ fontSize: 12 }}>
+              <thead>
+                <tr><th style={{ width: 60 }}>Tampil</th><th>Parameter</th><th>Nama di kartu</th>
+                  <th style={{ width: 80 }}>Urutan</th><th style={{ width: 120 }}>Nilai sekarang</th></tr>
+              </thead>
+              <tbody>
+                {draf.map((p, i) => (
+                  <tr key={p.name}>
+                    <td style={{ textAlign: 'center' }}>
+                      <input type="checkbox" checked={p.featured === true}
+                        onChange={(e) => setDraf((d) => d.map((x, j) => j === i ? { ...x, featured: e.target.checked } : x))} />
+                    </td>
+                    <td>{p.name} <span style={{ color: '#95a5a6' }}>({p.unit})</span></td>
+                    <td>
+                      <input value={p.label || ''} placeholder={p.name}
+                        onChange={(e) => setDraf((d) => d.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
+                        style={{ width: '100%', padding: 4, fontSize: 12 }} />
+                    </td>
+                    <td>
+                      <input type="number" value={p.order === undefined ? 999 : p.order}
+                        onChange={(e) => setDraf((d) => d.map((x, j) => j === i ? { ...x, order: e.target.value } : x))}
+                        style={{ width: 70, padding: 4, fontSize: 12 }} />
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatNilai(live[p.name], p.precision)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button onClick={simpanKartu}
+              style={{ padding: '7px 16px', background: '#1B4F72', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+              Simpan susunan kartu
+            </button>
+            <span style={{ fontSize: 11, color: '#7f8c8d' }}>
+              Tersimpan di Data Mapping device type ini, jadi berlaku untuk semua device bertipe sama.
+            </span>
+          </div>
+        </div>
+      ) : null}
+
       {/* Kartu utama, dipilih dari flag featured di Data Mapping */}
       {utama.length > 0 ? (
         <div className="rt-grid-4">
           {utama.map((p) => (
-            <MetricPanel key={p.name} meta={{ ...p, label: p.name }} value={live[p.name]} />
+            <MetricPanel key={p.name} meta={{ ...p, label: p.label || p.name }} value={live[p.name]} />
           ))}
         </div>
       ) : null}

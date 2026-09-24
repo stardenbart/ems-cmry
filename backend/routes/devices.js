@@ -162,6 +162,7 @@ router.get('/:id/parameters', authenticate, async (req, res) => {
       parameters: params
         .map((p) => ({
           name: p.name,
+          label: p.label || p.name,
           kind: p.kind || 'other',
           unit: p.unit || '-',
           agg: p.agg || 'gauge',

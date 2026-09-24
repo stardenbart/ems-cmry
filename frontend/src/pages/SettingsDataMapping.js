@@ -25,12 +25,13 @@ const CONV_MODE = [
   { key: 'none', label: 'none — angka perangkat apa adanya' },
   { key: 'template', label: 'template — pakai satuan standar' },
   { key: 'manual', label: 'manual — skala dan offset sendiri' },
+  { key: 'pf_ieee', label: 'pf_ieee — power factor Schneider, lipat nilai di atas 1' },
 ];
 const KIND = ['energy', 'power', 'reactive_power', 'apparent_power', 'current', 'voltage',
   'frequency', 'power_factor', 'thd', 'temperature', 'pressure', 'flow', 'other'];
 
 const PARAM_BARU = {
-  name: '', address: '', length: 2, dataType: 'float32be', save: true,
+  name: '', label: '', address: '', length: 2, dataType: 'float32be', save: true,
   kind: 'other', unit: '-', agg: 'gauge', precision: 2,
   conv_mode: 'none', scale: 1, offset: 0,
   min: null, max: null, featured: false, order: 999, poll_class: 'normal',
@@ -225,7 +226,8 @@ function SettingsDataMapping() {
                 <thead>
                   <tr>
                     <th style={{ width: 30 }}>#</th>
-                    <th style={{ minWidth: 180 }}>Nama</th>
+                    <th style={{ minWidth: 170 }}>Nama</th>
+                    <th style={{ minWidth: 150 }}>Label kartu</th>
                     <th style={{ width: 90 }}>Address</th>
                     <th style={{ width: 60 }}>Len</th>
                     <th style={{ width: 110 }}>Tipe data</th>
@@ -243,6 +245,8 @@ function SettingsDataMapping() {
                       <tr>
                         <td style={{ color: '#95a5a6' }}>{i + 1}</td>
                         <td><input value={p.name} onChange={(e) => ubahParam(i, 'name', e.target.value)} style={sel} /></td>
+                        <td><input value={p.label || ''} placeholder={p.name}
+                          onChange={(e) => ubahParam(i, 'label', e.target.value)} style={sel} /></td>
                         <td><input type="number" value={p.address} onChange={(e) => ubahParam(i, 'address', e.target.value)} style={sel} /></td>
                         <td><input type="number" min="1" max="125" value={p.length} onChange={(e) => ubahParam(i, 'length', e.target.value)} style={sel} /></td>
                         <td>
@@ -287,7 +291,7 @@ function SettingsDataMapping() {
 
                       {probe.hasil[i] ? (
                         <tr>
-                          <td colSpan="11" style={{ background: '#f8f9fa', fontSize: 11 }}>
+                          <td colSpan="12" style={{ background: '#f8f9fa', fontSize: 11 }}>
                             Hasil baca alamat {p.address}:{' '}
                             {Object.entries(probe.hasil[i])
                               .filter(([k]) => k !== 'raw')
@@ -303,7 +307,7 @@ function SettingsDataMapping() {
 
                       {rinci[i] ? (
                         <tr>
-                          <td colSpan="11" style={{ background: '#fbfbfb' }}>
+                          <td colSpan="12" style={{ background: '#fbfbfb' }}>
                             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', padding: '6px 0' }}>
                               <label style={{ fontSize: 11 }}>Konversi
                                 <select value={p.conv_mode} onChange={(e) => ubahParam(i, 'conv_mode', e.target.value)}
