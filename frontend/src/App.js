@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/Layout/Layout';
 import ErrorBoundary from './components/Common/ErrorBoundary';
 import Login from './pages/Login';
+import Overview from './pages/Overview';
 import RealtimeDevice from './pages/RealtimeDevice';
 import DashboardEnergy from './pages/DashboardEnergy';
 import DashboardComparison from './pages/DashboardComparison';
@@ -41,6 +42,7 @@ function AppRoutes() {
       <Route path="/change-password" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
 
       {/* Realtime */}
+      <Route path="/overview" element={<ProtectedRoute><Overview /></ProtectedRoute>} />
       <Route path="/realtime/device" element={<ProtectedRoute><RealtimeDevice /></ProtectedRoute>} />
       <Route path="/realtime/sld" element={<ProtectedRoute><RealtimeDevice /></ProtectedRoute>} />
 

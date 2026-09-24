@@ -27,6 +27,10 @@ function Sidebar({ isOpen, onClose }) {
 
   const menuItems = [
     {
+      label: 'Overview', key: 'overview', path: '/overview',
+      levels: ['admin','maintenance','operator','viewer'],
+    },
+    {
       label: 'Realtime Diagram', key: 'realtime', path: '/realtime/device',
       levels: ['admin','maintenance','operator','viewer'],
     },
