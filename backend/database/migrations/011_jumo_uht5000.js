@@ -93,7 +93,7 @@ module.exports = async function run(sequelize, transaction) {
   if (!gw) {
     gw = await satu(
       `INSERT INTO data_gateways (name, protocol, port_or_ip, baudrate, parity, created_at, updated_at)
-       VALUES (:name, 'simulated', 'belum terpasang', 9600, 'none', now(), now())
+       VALUES (:name, 'simulated', 'not connected yet', 9600, 'none', now(), now())
        RETURNING id`, { name: 'JUMO UHT 5000' });
   }
 

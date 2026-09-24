@@ -57,6 +57,14 @@ function LiveChart({ param, data, color, wide }) {
   const satuan = tampilSatuan(param.unit);
   const gid = `grad-${param.name.replace(/[^a-zA-Z0-9]/g, '')}`;
   const terakhir = data.length ? data[data.length - 1][param.name] : null;
+
+  // Label sumbu Y memakai satu digit lebih banyak kalau rentangnya lebih sempit
+  // dari presisi tampilan. Tanpa ini kurva suhu yang bergerak 0,2 °C berlabel
+  // "43,3 43,3 43,2 43,2" — tiap label benar, tapi deretnya tidak terbaca.
+  const presisi = param.precision === undefined || param.precision === null ? 2 : Number(param.precision);
+  const nilaiSeri = data.map((r) => r[param.name]).filter((v) => typeof v === 'number');
+  const rentang = nilaiSeri.length ? Math.max(...nilaiSeri) - Math.min(...nilaiSeri) : 0;
+  const digitSumbu = rentang > 0 && rentang < 5 * Math.pow(10, -presisi) ? presisi + 1 : presisi;
   return (
     <div className="card" style={{ marginBottom: 0, gridColumn: wide ? '1 / -1' : undefined }}>
       <div style={{ fontSize: 11, color: '#7f8c8d', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
@@ -81,7 +89,7 @@ function LiveChart({ param, data, color, wide }) {
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
           <XAxis dataKey="time" fontSize={11} tick={{ fill: '#7f8c8d' }} interval="preserveStartEnd" minTickGap={40} />
           <YAxis fontSize={11} tick={{ fill: '#7f8c8d' }} domain={['auto', 'auto']} width={56}
-            tickFormatter={(v) => formatNilai(v, param.precision)} />
+            tickFormatter={(v) => formatNilai(v, digitSumbu)} />
           <Tooltip formatter={(v) => [`${formatNilai(v, param.precision)}${satuan ? ` ${satuan}` : ''}`, judul]} />
           <Area type="monotone" dataKey={param.name} stroke={color} fill={`url(#${gid})`}
             strokeWidth={2} dot={false} connectNulls />
