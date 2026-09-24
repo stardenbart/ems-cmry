@@ -1,8 +1,8 @@
 # EMS — Dokumentasi Teknis
 
 Panduan handover untuk engineer maupun AI agent yang baru masuk ke repo ini.
-Dokumen ini menjelaskan cara sistem bekerja, konvensi yang tidak terlihat dari kode,
-dan jebakan yang sudah pernah memakan korban.
+Isinya cara sistem bekerja, konvensi yang tidak terlihat dari kode, dan jebakan
+yang sudah pernah memakan korban.
 
 Terakhir diperbarui: 2026-09-24.
 
@@ -10,315 +10,355 @@ Terakhir diperbarui: 2026-09-24.
 
 ## 1. Ringkasan
 
-Energy Monitoring System (EMS) membaca power meter **Schneider PM2200** lewat RS485 /
-Modbus RTU, menyiarkannya ke browser secara realtime, menyimpan sampel tiap 15 menit ke
-PostgreSQL, lalu menyajikan dashboard energi.
+Platform monitoring industri yang membaca perangkat lewat Modbus RTU/TCP,
+menyiarkannya realtime, menyimpan sampel tiap 15 menit, dan menyajikan dashboard
+yang menyesuaikan diri dengan jenis besaran apa pun.
 
-**Stack:** Node 18 · Express · Sequelize · PostgreSQL 17 · React (CRA) · ws · modbus-serial · node-cron
+Awalnya khusus energi dengan satu Schneider PM2200. Sekarang generik: pressure,
+temperature, flow, dan besaran lain tidak memerlukan kode baru — cukup metadata.
+
+**Stack:** Node 18 · Express · Sequelize · PostgreSQL 17 · React (CRA) · ws ·
+modbus-serial · node-cron
 
 ---
 
-## 2. Topologi runtime
+## 2. Prinsip yang memegang seluruh desain
+
+Empat aturan ini menjelaskan hampir semua keputusan di kode. Kalau ragu saat
+mengubah sesuatu, kembali ke sini.
+
+**Perilaku ditentukan metadata, bukan nama parameter.** Tidak ada satu pun
+halaman atau query yang menyebut "Active Power Total" secara langsung. Yang
+menentukan adalah `kind`, `agg`, dan `unit` milik parameter.
+
+**Simpan mentah, konversi saat dibaca.** Nilai di `readings` adalah angka apa
+adanya. Membetulkan faktor yang salah otomatis membetulkan seluruh riwayat,
+tanpa `UPDATE` massal.
+
+**`name` adalah identitas, `label` adalah tampilan.** Kolom `parameter` di
+`readings` menautkan jutaan baris ke parameternya. Mengganti `name` memutus
+tautan itu, jadi nama tampilan disimpan terpisah di `label`.
+
+**Aturan otomatis harus benar-benar mustahil, bukan sekadar tidak biasa.**
+Validasi yang terlalu ketat menghasilkan penanda palsu, dan penanda palsu membuat
+orang berhenti mempercayai seluruh sistem.
+
+---
+
+## 3. Topologi runtime
 
 ```
-PM2200 ──RS485/Modbus RTU──> COM2 (9600 8N1, slave ID 1)
+Perangkat Modbus (RTU di COM2, TCP lewat gateway)
    │
    ▼
-modbusReader.js        poll tiap POLL_INTERVAL_MS (3000 ms)
-   │                   baca semua param dari device_types.params
-   │
-   ├──> wsServer.broadcastData() ──> latestData{} (in-memory) ──> WebSocket :3005 ──> React
-   ├──> alarmChecker.checkAlarms()
+modbusReader.js            poll tiap POLL_INTERVAL_MS (3000 ms)
+   │  block read, kelas laju, resync saat gagal baca
+   ├──> decode.js          penyandian khusus perangkat (int64, pf_ieee, manual)
+   ├──> wsServer           latestData{} in-memory ──> WebSocket :3005 ──> React
+   ├──> watchdog           tandai pembacaan sukses
    │
    ▼
-dataLogger.js          cron */15 * * * *
-   │                   snapshot latestData -> filter save=true -> bulkCreate
+dataLogger.js              cron */15 * * * *
+   │  validasi rentang + koherensi -> quality; spool saat DB mati
    ▼
-PostgreSQL `ems_db` ──> routes/dashboards.js (agregasi SQL) ──> REST :3010/api ──> React
+PostgreSQL ──> aggregation.js ──> REST :3010/api ──> React
+                                    ▲
+alarmEngine.js (timer 5 detik) ─────┘  baca latestData, nyalakan alarm_events
 ```
 
-Satu proses Node melayani **:3010** (REST API + static `frontend/build`) dan **:3005** (WebSocket).
+Satu proses Node melayani **:3010** (REST + static `frontend/build`) dan
+**:3005** (WebSocket).
 
-### Deployment produksi
+### Deployment
 
 | Hal | Nilai |
 |---|---|
-| Server | `172.104.1.81` (Windows 11, host `DESKTOP-JTEQQKD`) |
+| Server | `172.104.1.81` (Windows 11, `DESKTOP-JTEQQKD`) |
 | Path | `C:\Apps\ems-cmry` |
-| Proses | **Windows Service `emsbackend.exe`** (node-windows), entry `backend/server.js` |
-| Installer service | `backend/install-service.js`, artefak di `backend/daemon/` (tidak di-commit) |
-| Log service | `backend/daemon/emsbackend.out.log` / `.err.log` |
-| Frontend | build statis, di-serve Express — **bukan** `react-scripts start` |
+| Proses | Windows Service **`emsbackend.exe`** (node-windows) |
+| Log | `backend/daemon/emsbackend.out.log` / `.err.log` |
+| Backup DB | `C:\Apps\backup\` |
 
-> **pm2 tidak dipakai lagi.** Dulu ada entri pm2 `ems_backend` yang berjalan paralel dengan
-> Windows Service dan crash-loop `EADDRINUSE :3005` sampai menghasilkan log 15 GB. Entri itu
-> sudah dihapus 2026-09-24. Jangan dihidupkan lagi — pilih salah satu, jangan dua-duanya.
-
----
-
-## 3. Skema database
-
-9 tabel. Relasi didefinisikan di `backend/models/index.js`.
-
-```
-groups ─┐
-        ├─< devices >─┬─ device_types   (params JSONB = peta register)
-gateways┘             └─ data_gateways  (COM port, baudrate, parity)
-                │
-                └─< readings   (device_id, timestamp, parameter, value)
-                └─< alarms ─< alarm_logs
-
-users · energy_conversions · smtp_settings
-```
-
-`readings` adalah tabel panjang (EAV): satu baris per parameter per timestamp, bukan satu
-baris per pembacaan. Kolom `timestamp` bertipe **`timestamptz`**; koneksi Sequelize memakai
-`timezone: '+07:00'`, dan semua agregasi memakai `AT TIME ZONE 'Asia/Jakarta'`.
-
-Konfigurasi terpasang saat ini: 1 device `PM MDP-A3` (slave 1), 1 gateway `MDP A-3` (COM2),
-1 device type `PM2200` berisi 24 parameter.
+> **pm2 sudah dicabut total** pada 24 Sep 2026 — app dihapus, daemon di-kill,
+> entri Run `PM2` dibuang. Dulu berjalan paralel dengan Windows Service, crash
+> loop `EADDRINUSE :3005`, dan menghasilkan log 16,4 GB yang memenuhi disk lalu
+> menjatuhkan server. Jangan dihidupkan lagi.
 
 ---
 
-## 4. Peta register PM2200 — baca ini sebelum menyentuh mapping
+## 4. Migrasi database
 
-Peta register **tidak ada di kode**. Semuanya tersimpan di kolom JSONB
-`device_types.params` dan bisa diedit dari UI **Settings → Data Mapping**. Ini artinya
-perilaku pembacaan bisa berubah tanpa satu baris kode pun berubah — dan itu sudah pernah
-terjadi.
+Project ini punya runner migrasi sendiri tanpa dependensi baru.
 
-Bentuk tiap entri:
+```bash
+npm run migrate:status   # lihat mana yang sudah diterapkan
+npm run migrate          # terapkan yang belum
+```
+
+Berkas `.sql` dan `.js` bernomor di `backend/database/migrations`, dijalankan
+urut nama, dicatat di `schema_migrations`, masing-masing dalam satu transaksi.
+
+| # | Isi |
+|---|---|
+| 001 | index `readings`, kolom `quality`, `collector_id` |
+| 002 | tabel `units` + 24 satuan bawaan |
+| 003 | metadata semantik untuk parameter yang ada |
+| 004 | `audit_log` |
+| 005 | penanda password bawaan |
+| 006 | tabel `parameters` + `parameter_id` |
+| 007 | `asset_nodes`, `devices.asset_node_id`, `devices.role` |
+| 008 | `alarm_rules`, `alarm_events`, `email_templates` |
+| 009 | `shifts`, `calendar_days` |
+| 010 | `roles`, `role_capabilities`, `user_roles`, `token_version` |
+
+**Selalu backup sebelum migrasi.** `node backup.js` memakai kredensial dari
+`.env` tanpa mencetaknya.
+
+---
+
+## 5. Metadata parameter
+
+Peta register tersimpan di `device_types.params` (JSONB) dan disunting lewat
+**Settings → Data Mapping**. Jumlahnya tidak dibatasi — batas Modbus adalah 125
+register per satu permintaan baca, bukan jumlah parameter, dan RS485 tidak
+mengenal konsep parameter sama sekali.
 
 ```json
-{ "name": "Active Power Total", "address": 3059, "length": 2, "dataType": "float32be", "save": true }
+{
+  "name": "Active Power Total", "label": "Daya Aktif",
+  "address": 3059, "length": 2, "dataType": "float32be", "save": true,
+  "kind": "power", "unit": "kW", "agg": "gauge", "precision": 2,
+  "conv_mode": "none", "scale": 1, "offset": 0,
+  "min": -5000, "max": 5000,
+  "featured": true, "order": 0, "poll_class": "fast"
+}
 ```
 
-| Field | Arti |
+| Field | Pengaruhnya |
 |---|---|
-| `address` | alamat Modbus 0-based yang dikirim ke `readHoldingRegisters` |
-| `length` | jumlah register (2 untuk float32, 4 untuk int64) |
-| `dataType` | `float32be` · `int16` · `uint16` · `int32` · `int64-be` |
-| `save` | kalau `false`, parameter tetap tampil realtime tapi tidak ditulis ke `readings` |
+| `agg` | `counter` = jumlah selisih positif · `gauge` = rata-rata. Menentukan seluruh agregasi |
+| `kind` | memilih ikon, mengelompokkan dashboard, memilih aturan koherensi |
+| `unit` | label dan konversi; harus ada di tabel `units` |
+| `conv_mode` | `none` · `manual` (scale/offset) · `pf_ieee` (lipat PF) |
+| `min`/`max` | batas kewajaran; di luar itu ditandai `quality = 1` |
+| `featured` | tampil sebagai kartu KPI |
+| `poll_class` | `fast` tiap siklus · `normal` tiap 2 · `slow` tiap 10 |
+| `label` | nama di kartu; kosong berarti pakai `name` |
 
 ### Konvensi alamat
 
-**`address` = nomor register di manual − 1.**
+`address` = nomor register di manual − 1. Current A 3000→2999, Active Power
+Total 3060→3059, Frequency 3110→3109.
 
-| Parameter | Manual | `address` |
-|---|---|---|
-| Current A | 3000 | 2999 |
-| Active Power Total | 3060 | 3059 |
-| Apparent Power Total | 3076 | 3075 |
-| Power Factor A | 3078 | **3077** |
-| Frequency | 3110 | 3109 |
-| Active Energy Delivered (Into Load) | 3204 | 3203 (int64, length 4) |
+**Jangan percaya manual saja.** Pakai tombol **Read** di Data Mapping: sistem
+membaca register itu dari perangkat dan menampilkan hasil dekode untuk semua
+tipe data sekaligus. Verifikasi silang yang selalu berlaku:
 
-Kalau menambah parameter, ikuti pola ini dan **verifikasi terhadap data hidup**, jangan
-percaya manual saja — lihat §6.
+- `Apparent Power ≈ √3 × Voltage L-L × Current Avg / 1000`
+- `PF Total = Active Power / Apparent Power`
+- akumulator energi naik monoton, dan `Δenergi/Δwaktu ≈ Active Power`
 
-### Catatan Power Factor
+### Power factor PM2200
 
-Ada dua besaran berbeda dan keduanya valid:
+Register PF berkisar **−2..2**, bukan −1..1. Nilai di atas 1 berarti *leading*
+(kapasitif) dan harus dilipat: `1,304 → −0,696`. Itu tugas `conv_mode: pf_ieee`.
+Tanpa pelipatan, layar menampilkan 1,304 — angka yang mustahil untuk PF.
 
-| `address` | Nilai tipikal di plant ini | Arti |
-|---|---|---|
-| 3084 | ~0,66 | PF total — persis sama dengan `Active Power / Apparent Power` |
-| **3077** | ~0,96 | Power Factor A (displacement PF fasa A) — **yang dipakai sekarang** |
-
-Selisihnya besar karena THD arus tinggi (~17–18%). PF total (true PF) memperhitungkan
-harmonisa, displacement PF tidak. Per permintaan 2026-09-24 sistem memakai **3077**.
-
-Nama parameternya tetap `PF Total` walau isinya Power Factor A, supaya riwayat
-`readings` lama tidak terputus dan key WebSocket di frontend tidak berubah. Judul kartu
-di UI sudah diubah jadi "Power Factor A".
-
----
-
-## 5. Perhitungan energi
-
-### Sumber
-
-Register akumulator `Active Energy Delivered (Into Load)` (int64, satuan **Wh**) adalah
-sumber utama. Kalau belum ada datanya, `dashboards.js` jatuh ke estimasi
-`SUM(Active Power Total) × 0,25` (karena interval log 15 menit = 0,25 jam).
-
-### Energy per periode — jumlah selisih, bukan MAX − MIN
-
-`energyQuery()` di `backend/routes/dashboards.js` menjumlahkan **selisih positif antar
-pembacaan berurutan**:
-
-```sql
-SUM(GREATEST(0, value - LAG(value) OVER (ORDER BY timestamp))) / 1000
-```
-
-Ini menggantikan rumus lama `MAX(value) - MIN(value)`. Alasannya: **akumulator meter bisa
-di-reset**. Pada 1 Sep 2026 10:00 WIB nilainya terjun dari 2.022.839.359 Wh ke 4.499 Wh,
-dan rumus MAX−MIN menghitung seluruh angka sebelum reset sebagai pemakaian satu hari —
-2.026.830 kWh, padahal normalnya ~18.000 kWh/hari. `GREATEST(0, ...)` membuang langkah
-negatif saat reset.
-
-Helper ini dipakai bersama oleh `/energy` dan `/comparison`. Jangan duplikasi rumusnya lagi.
-
-### Jeda logging
-
-Selisih yang menjembatani jeda logging **tidak dihitung**. Batasnya `MAX_GAP_MINUTES`
-= 4 × `LOG_INTERVAL_MINUTES` (default 60 menit), cukup longgar untuk menoleransi beberapa
-siklus yang terlewat tapi tidak sampai menelan jeda panjang.
-
-Tanpa filter ini, pembacaan pertama setelah jeda membawa seluruh energi selama jeda dan
-menimbunnya di hari saat logging kembali jalan — jeda 3 hari 18 jam pernah membuat bucket
-20 Sep 2026 jadi 67.958 kWh, sekitar 4× hari normal. Energi selama jeda memang tidak
-terukur, jadi lebih jujur tidak dihitung daripada dibebankan ke satu hari. Konsekuensinya
-hari yang datanya bolong akan tampil rendah — itu memang kondisi sebenarnya.
-
-> Efek samping: kalau hari ini ada jeda, kartu **Energy Today** (selisih akumulator murni)
-> akan lebih besar daripada bar hari ini di chart bulanan (hanya interval terukur). Keduanya
-> benar menurut definisinya masing-masing, tapi angkanya tidak akan sama.
-
-Ada `backend/test-energy-query.js` untuk menjaga rumus ini: memastikan tidak ada bucket
-harian yang melebihi batas fisik (24 jam × daya puncak) maupun bernilai negatif.
-Jalankan `node test-energy-query.js` dari folder `backend`.
-
-### Energy Today
-
-`GET /api/dashboards/energy-today` mengembalikan nilai akumulator pertama hari ini
-(sudah dalam kWh). Frontend menghitung `nilai_realtime / 1000 − base` supaya kartu
-ikut bergerak realtime, bukan menunggu cron 15 menit.
-
-> Batasnya: kalau meter di-reset di tengah hari berjalan, angka Energy Today akan kacau
-> sampai lewat tengah malam. Belum ditangani.
-
----
-
-## 6. Jebakan yang sudah pernah menggigit
-
-### 6.1 Frame Modbus tergeser dan tidak pernah resync
-
-Ini penyebab insiden 23–24 Sep 2026 dan paling penting untuk dipahami.
-
-`connectRTUBuffered` memakai buffer. Kalau satu pembacaan timeout, balasan yang datang
-terlambat tertinggal di buffer, lalu **dimakan oleh permintaan berikutnya**. Semua register
-setelah itu bergeser satu posisi, dan koneksi tidak pernah di-reset sendiri. Akibatnya:
-
-- `Active Energy Delivered` terbaca **tepat ×65536** selama 21 jam (nilai benar digeser 16 bit)
-- `PF Total` jadi `null`
-- Nilai-nilai lain tetap terlihat "masuk akal" sehingga tidak ada yang curiga
-
-Gejalanya berhenti hanya saat proses di-restart. Perbaikannya ada di
-`backend/services/modbusReader.js`: `readDevice()` kini mengembalikan
-`{ data, failed }`, dan `pollAllDevices()` **menutup lalu menyambung ulang koneksi begitu ada
-satu register pun gagal dibaca**, serta tidak menyiarkan data dari siklus tersebut.
-
-> Kalau melihat nilai akumulator melonjak dengan faktor pas 2ⁿ, curigai hal ini duluan,
-> bukan alamat registernya.
-
-### 6.2 `reloadConfig()` tidak pernah dipanggil
-
-`modbusReader.js` mengekspor `reloadConfig()`, tapi **tidak ada satu pun pemanggilnya**.
-`routes/settings.js` mengubah `device_types` tanpa memberi tahu reader. Artinya:
-
-**Setiap perubahan Data Mapping baru berlaku setelah service di-restart.**
-
-Ini membuat kerusakan bisa muncul berhari-hari setelah seseorang mengedit mapping, sehingga
-sulit dihubungkan dengan penyebabnya. Kalau mau diperbaiki, panggil `reloadConfig()` dari
-handler `PUT /api/settings/device-types`.
-
-### 6.3 Diagnosis mapping wajib pakai data hidup
-
-Saat menebak alamat register, jangan berhenti di manual. Verifikasi silang:
-
-- `Active Power Total / Apparent Power Total` harus sama dengan PF total
-- akumulator energi harus naik monoton, dan `Δenergi / Δwaktu` harus ≈ `Active Power Total`
-- `Frequency` harus ~50 Hz, `Voltage L-L` ~398 V
-
-Contoh nyata mengapa ini penting: `PF Total` pernah dipetakan ke 3109 — alamat Frequency —
-sehingga nilainya terbaca `50,0218`, identik dengan Frequency. Ketahuan hanya lewat
-perbandingan seperti di atas.
-
-### 6.4 Probe serial dari sesi SSH tidak bisa diandalkan
-
-Membaca COM2 langsung dari skrip Node lewat sesi SSH menghasilkan timeout di semua register,
-padahal service (berjalan sebagai LocalSystem) membacanya normal. Untuk diagnosis, andalkan
-`GET /api/dashboards/realtime-all` dan isi tabel `readings`, bukan probe manual.
-
----
-
-## 7. API
-
-Semua endpoint butuh header `Authorization: Bearer <token>` dari `POST /api/auth/login`.
-
-| Endpoint | Fungsi |
+| Alamat | Parameter |
 |---|---|
-| `GET /api/dashboards/realtime-all` | snapshot `latestData` in-memory — alat diagnosis utama |
-| `GET /api/dashboards/realtime/:deviceId` | idem, satu device |
-| `GET /api/dashboards/energy-today?device_id=` | base akumulator hari ini (kWh) |
-| `GET /api/dashboards/energy?device_id=&range=today\|thisWeek\|thisMonth\|thisYear` | energi per bucket |
-| `GET /api/dashboards/comparison?device_id=&range=…VsLast…` | periode berjalan vs sebelumnya |
-| `GET /api/dashboards/power?device_id=&start=&end=` | trend kW |
-| `GET /api/dashboards/pq?device_id=&start=&end=` | THD arus & tegangan |
-| `GET /api/dashboards/group/energy\|comparison\|kva` | agregasi per group |
-| `GET /api/dashboards/energy-conversion` | faktor CO2 / fuel / IDR per kWh |
-
-`/api/auth`, `/api/devices`, `/api/reports`, `/api/alarms`, `/api/settings` mengikuti pola CRUD biasa.
+| 3077 | PF A |
+| 3079 | PF B |
+| 3081 | PF C |
+| 3083 | PF Total |
 
 ---
 
-## 8. Menjalankan secara lokal
+## 6. Agregasi
+
+`services/aggregation.js` memilih rumus dari `agg`, bukan dari nama parameter.
+
+**`counter`** — jumlah selisih positif antar pembacaan, **disebar proporsional
+sepanjang waktunya** lewat `generate_series`.
+
+Dua hal ditangani sekaligus. `GREATEST(0, …)` membuang langkah negatif saat meter
+di-reset (1 Sep 2026 nilainya terjun dari 2.022.839.359 Wh ke 4.499 Wh).
+Penyebaran proporsional menjaga total tetap utuh saat ada jeda logging: versi yang
+membuang selisih penjembatan pernah kehilangan **3.340 dari 14.492 kWh dalam satu
+hari**, sementara versi yang menimbunnya di satu bucket pernah membuat satu hari
+terbaca 67.958 kWh.
+
+**`gauge`** — avg, min, max. Tidak pernah dijumlah. Menjumlahkan suhu dari
+beberapa sensor menghasilkan angka yang tidak berarti.
+
+Baris ber-`quality` suspect **tidak disembunyikan**; jumlahnya dilaporkan lewat
+`suspect_count` supaya UI bisa menandainya tanpa menghilangkan datanya.
+
+---
+
+## 7. Hierarki aset dan rollup
+
+`asset_nodes` adalah pohon dengan kedalaman bebas; `type` teks bebas (Plant,
+Gedung, Line, Mesin). Device menempel ke node mana pun lewat `asset_node_id`,
+bukan hanya daun — meter incomer gedung menempel ke node gedung, meter mesin ke
+node mesin.
+
+`devices.role` menentukan rollup:
+
+| role | Perlakuan |
+|---|---|
+| `incomer` | node memakai angka ini saja sebagai totalnya |
+| `feeder` | dijumlahkan bersama seluruh cabang di bawah node |
+| `excluded` | tidak pernah ikut |
+
+Tanpa aturan ini, panel utama dan sub-panelnya terhitung dua kali. Selisih
+`incomer − Σ feeder` ditampilkan sebagai temuan, bukan disembunyikan: isinya rugi
+distribusi, beban yang belum dimeter, dan kesalahan pemasangan CT.
+
+Diatur lewat **Settings → Asset Hierarchy**. Menu **Grouping** lama masih ada tapi
+sudah peninggalan.
+
+---
+
+## 8. Kualitas data
+
+Empat lapis, semuanya lahir dari kejadian nyata.
+
+1. **Resync Modbus.** Timeout meninggalkan balasan telat di buffer
+   `connectRTUBuffered`; permintaan berikutnya memakannya dan seluruh register
+   bergeser satu posisi. Energi pernah terbaca **tepat ×65536 selama 21 jam**.
+   Sekarang koneksi di-reset begitu ada satu register gagal dibaca.
+2. **Validasi rentang** terhadap `min`/`max`.
+3. **Validasi koherensi** antar parameter — hanya yang mustahil secara fisika.
+4. **Watchdog dua lapis**: realtime 2 menit per device, logging 2× interval.
+
+### Aturan koherensi harus konservatif
+
+Versi pertama menandai `√(P²+Q²)` yang jauh di bawah `S`, dan arus netral yang
+melebihi arus fasa tertinggi. Keduanya ternyata **sah** pada beban tiga fasa tak
+seimbang, dan menghasilkan tujuh parameter suspect palsu di produksi.
+
+`Apparent Power Total` adalah jumlah **aritmetik** per fasa, sementara
+`√(P²+Q²)` adalah jumlah **vektor**. Untuk beban tak seimbang keduanya berbeda
+jauh. Fasa yang seimbang besarnya juga bisa sangat tidak seimbang sudutnya, dan
+harmonisa triplen menjumlah di netral.
+
+Yang tersisa hanya empat aturan yang benar-benar mustahil: `S_vs_VI`, `P_gt_S`,
+`PQ_gt_S`, dan `IN_gt_sum` (arus netral melebihi **jumlah** ketiga fasa).
+
+---
+
+## 9. Konfigurasi tanpa restart
+
+Perubahan mapping berlaku pada siklus pembacaan berikutnya. `requestReload()`
+menandai permintaan, dan `pollAllDevices()` memuat ulang **di batas siklus** —
+bukan di tengah pembacaan, karena menukar peta register di tengah siklus adalah
+cara termudah membuat frame Modbus tergeser.
+
+`POST /api/devices/:id/read-now` memaksa satu pembacaan agar hasilnya langsung
+terlihat. Keduanya lewat antrean per gateway, jadi tidak pernah bertabrakan
+dengan poll yang sedang jalan.
+
+---
+
+## 10. Alarm
+
+`alarm_rules` dirakit dari UI: parameter, operator, ambang, `hold_seconds`,
+severity, jendela aktif harian, penerima, template.
+
+`hold_seconds` membuat kondisi harus bertahan sebelum alarm menyala. Tanpa itu
+satu lonjakan sesaat sudah cukup membangunkan orang tengah malam, dan alarm yang
+terlalu berisik akhirnya diabaikan — sama saja dengan tidak punya alarm.
+
+`alarmEngine.js` berjalan di **timer sendiri tiap 5 detik**, bukan menempel di
+jalur pembacaan Modbus: satu email yang menggantung tidak boleh memperlambat
+polling bus.
+
+---
+
+## 11. Peran dan hak akses
+
+**Katalog kapabilitas ditetapkan di kode** (`services/capabilities.js`), bukan
+database, karena setiap kapabilitas harus punya titik penegakan nyata. Yang bebas
+dirakit dari UI adalah kombinasinya menjadi peran.
+
+Penugasan terikat node dan berlaku ke seluruh cabang di bawahnya. Mencabut peran
+menaikkan `users.token_version`, yang membuat token lama tidak berlaku — JWT
+bersifat stateless, jadi tanpa ini kewenangan lama masih bisa dipakai sampai
+token kedaluwarsa.
+
+> **Jangan menegakkan aturan tanpa alur UI-nya siap.** Guard `must_change_password`
+> pernah menolak seluruh endpoint dengan 428; interceptor frontend membacanya
+> sebagai sesi kedaluwarsa dan melempar user ke halaman login. Seluruh halaman
+> kosong, dan itu memadamkan sistem, bukan mengamankannya.
+
+---
+
+## 12. Menjalankan dan memelihara
 
 ```bash
-git clone https://github.com/stardenbart/ems-cmry.git
-cd ems-cmry
+# lokal
 psql -U postgres -c "CREATE DATABASE ems_db;"
-psql -U postgres -d ems_db -f backend/database/structure_ems.sql
-
-cd backend  && npm install && node seed.js && npm run dev
+cd backend  && npm install && npm run migrate && node seed.js && npm run dev
 cd frontend && npm install && npm start
+
+# test — tanpa database maupun perangkat
+npm test
+npm run test:db     # perlu koneksi database
 ```
 
-`.env` tidak ikut repo. Template ada di `README.md`. Tanpa hardware, `modbusReader`
-otomatis masuk **DEMO MODE** dengan data simulasi — nama parameternya harus persis sama
-dengan yang di `device_types.params`, kalau tidak dashboard akan kosong.
+### Build produksi
 
----
-
-## 9. Runbook operasional
+**Selalu lewat `backend/buildswap.ps1`.** CRA mengosongkan folder tujuan sebelum
+mengisinya, jadi build langsung ke `build/` membuat website membalas error
+beberapa detik, dan build yang gagal meninggalkan situs kosong. Skrip itu
+membangun ke folder sementara dan menukarnya hanya kalau berhasil.
 
 ```powershell
-# status & restart
 Get-Service emsbackend.exe
-Restart-Service emsbackend.exe -Force     # wajib setelah mengubah Data Mapping
-
-# apakah meter menjawab?  semua nilai null = link RS485 mati
-# (login dulu, lalu GET /api/dashboards/realtime-all)
-
-# log
+Restart-Service emsbackend.exe -Force
 Get-Content C:\Apps\ems-cmry\backend\daemon\emsbackend.out.log -Tail 40
-
-# backup DB
-& 'C:\Program Files\PostgreSQL\17\bin\pg_dump.exe' -U postgres -d ems_db -f C:\Apps\backup\ems_db.sql
 ```
 
-**Checklist saat angka dashboard terlihat aneh:**
+### Checklist saat angka terlihat aneh
 
-1. `realtime-all` — semua `null`? → link RS485 / hardware, bukan software
-2. Bandingkan `Active Power / Apparent Power` dengan `PF Total`
-3. Cek akumulator energi monoton naik dan ordenya wajar (~4×10⁸ Wh per 2026-09-24)
-4. Lonjakan dengan faktor 2ⁿ → frame tergeser, restart service (§6.1)
-5. Bucket harian terlihat rendah → cek jeda logging, bukan bug rumus (§5)
-6. Baru terakhir: curigai `device_types.params`
-
-Jalankan juga `node test-energy-query.js` dari folder `backend` — kalau rumus energi
-bermasalah, test ini gagal duluan sebelum kamu menebak-nebak.
+1. `GET /api/dashboards/realtime-all` — semua `null`? berarti link fisik, bukan software
+2. Bandingkan `Active/Apparent` dengan `PF Total`
+3. Akumulator energi monoton naik dan ordenya wajar?
+4. Lonjakan dengan faktor 2ⁿ → frame tergeser, restart service
+5. `npm run test:db` — menangkap regresi rumus energi
+6. Baru terakhir: curigai `device_types.params`, dan lihat **audit log** siapa yang mengubahnya
 
 ---
 
-## 10. Utang teknis yang diketahui
+## 13. Utang teknis yang diketahui
 
 | Hal | Dampak |
 |---|---|
-| `reloadConfig()` tidak dipanggil | perubahan mapping butuh restart manual (§6.2) |
-| `frontend/src/api/axios.js` hardcode `http://172.104.1.81:3010/api` | pindah server = wajib rebuild frontend; kembalikan ke `REACT_APP_API_URL` |
-| Password default `admin/admin` masih aktif | risiko keamanan |
-| Energy Today rusak kalau meter reset di tengah hari | §5 |
-| Energy Today dan bar chart hari ini bisa beda saat ada jeda logging | §5 |
-| Cakupan test tipis | hanya rumus energi yang punya `test-energy-query.js` |
+| `admin/admin` masih aktif di produksi | risiko keamanan; guard ada tapi sengaja dimatikan sampai alur UI siap |
+| HTTP polos, tanpa TLS | kredensial melintas terbuka di jaringan pabrik |
+| WebSocket menyiarkan semua device ke semua client | boros; belum mendesak karena pemakaian 1–5 user |
+| `RealtimeDevice` dan `DeviceDetail` tumpang tindih | dua halaman melakukan hal serupa |
+| Tabel `groups` masih ada | peninggalan, digantikan `asset_nodes` |
+| Cakupan test tipis di lapisan integrasi | bug overview pernah lolos seluruh test unit dan baru ketahuan dari data nyata |
+| Docker memakai 102 GB di server | pembersihan ditunda atas permintaan |
+
+---
+
+## 14. Temuan kelistrikan yang belum ditindaklanjuti
+
+Bukan masalah software, tapi nyata dan berbiaya. Terbaca dari meter 24 Sep 2026:
+
+| | Daya aktif | Daya reaktif | PF |
+|---|---|---|---|
+| Fasa A | 338,6 kW | +98,9 kvar | 0,96 |
+| Fasa B | 139,8 kW | +351,3 kvar | **0,37** |
+| Fasa C | 270,2 kW | **−278,8 kvar** | 0,70 leading |
+
+Kompensasi daya reaktif tidak seimbang antar fasa: fasa B nyaris tanpa koreksi,
+fasa C kelebihan sampai berbalik kapasitif. PF total **0,67** kemungkinan besar
+sudah kena denda kVArh PLN tiap bulan. Ketidakseimbangan sudut ini juga yang
+menjelaskan arus netral ~3.000 A padahal arus fasa ~1.600 A — besaran yang
+berisiko memanaskan konduktor netral.
+
+Perlu diperiksa teknisi listrik: bank kapasitor per fasa, dan pengukuran langsung
+di panel.
